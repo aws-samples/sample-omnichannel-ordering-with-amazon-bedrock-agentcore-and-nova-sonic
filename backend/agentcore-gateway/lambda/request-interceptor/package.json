@@ -1,0 +1,7 @@
+{
+  "name": "request-interceptor",
+  "version": "1.0.0",
+  "description": "Request Interceptor Lambda for AgentCore Gateway - handles Authorization header propagation",
+  "main": "index.js",
+  "dependencies": {}
+}

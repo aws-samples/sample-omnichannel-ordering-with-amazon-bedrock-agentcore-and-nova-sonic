@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentCore Runtime WebSocket Test Client</title>
+    <!-- MapLibre GL JS -->
+    <!-- Note: SRI hashes are not added for unpkg.com resources as they use version ranges (@3, @1) -->
+    <!-- which can resolve to different files. For production, pin to specific versions and add SRI. -->
+    <!-- Example: maplibre-gl@3.6.2 instead of maplibre-gl@3 -->
+    <link href="https://unpkg.com/maplibre-gl@3/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3"></script>
+    <!-- AWS SDK and Amazon Location Helpers -->
+    <!-- AWS SDK uses a specific version (2.1691.0) but SRI is not feasible as AWS may update the file -->
+    <!-- For production deployments, consider hosting these libraries locally or using a package manager -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1691.0.min.js"></script>
+    <script src="https://unpkg.com/amazon-location-helpers@1"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #232F3E 0%, #37475A 100%);
+            min-height: 100vh;
+            padding: 10px;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            height: calc(100vh - 20px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #232F3E 0%, #FF9900 100%);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        .header-text {
+            text-align: left;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 2px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            opacity: 0.95;
+            font-size: 12px;
+        }
+        
+        .content {
+            padding: 15px 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        #status { 
+            padding: 8px 16px;
+            border-radius: 16px;
+            font-weight: 600;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            min-width: 140px;
+            text-align: center;
+        }
+        
+        .connected { 
+            background: rgba(129, 199, 132, 0.95);
+            color: white;
+        }
+        
+        .disconnected { 
+            background: rgba(229, 115, 115, 0.95);
+            color: white;
+        }
+        
+        #controls { 
+            display: none;
+        }
+        
+        .conversation-controls {
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-top: 2px solid #e0e0e0;
+            flex-shrink: 0;
+        }
+        
+        .conversation-controls button {
+            width: 100%;
+        }
+        
+        button { 
+            flex: 1;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #toggleBtn {
+            background: linear-gradient(135deg, #FF9900 0%, #EC7211 100%);
+            color: white;
+        }
+        
+        #toggleBtn.connected {
+            background: linear-gradient(135deg, #e57373 0%, #ef5350 100%);
+        }
+        
+        .config-section {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .form-group {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 600;
+            color: #333;
+            font-size: 11px;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 12px;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #FF9900;
+            box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.1);
+        }
+        
+
+        
+        .panels-container { 
+            display: flex;
+            gap: 15px;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        
+        .panel { 
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        
+        .panel.right-panel {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #map-container {
+            height: 400px;
+            width: 100%;
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .map-header {
+            background: linear-gradient(135deg, #232F3E 0%, #FF9900 100%);
+            color: white;
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .coordinates-display {
+            font-size: 11px;
+            opacity: 0.9;
+            font-weight: 400;
+        }
+        
+        .events-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 200px;
+            overflow: hidden;
+        }
+        
+        .events-header {
+            background: linear-gradient(135deg, #232F3E 0%, #FF9900 100%);
+            color: white;
+            padding: 8px 15px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .events-header:hover {
+            opacity: 0.9;
+        }
+        
+        .collapse-icon {
+            transition: transform 0.3s ease;
+        }
+        
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+        
+        .panel h2 { 
+            margin: 0;
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: 700;
+            color: white;
+            background: linear-gradient(135deg, #232F3E 0%, #FF9900 100%);
+            border-bottom: none;
+            flex-shrink: 0;
+        }
+        
+        #messages { 
+            height: 0;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 15px;
+            background: #fafafa;
+        }
+        
+        #messages::-webkit-scrollbar,
+        #events::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        #messages::-webkit-scrollbar-thumb {
+            background: #FF9900;
+            border-radius: 4px;
+        }
+        
+        .message { 
+            margin: 8px 0;
+            padding: 10px 14px;
+            border-radius: 14px;
+            max-width: 80%;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 13px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .user { 
+            background: linear-gradient(135deg, #FF9900 0%, #EC7211 100%);
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .assistant { 
+            background: white;
+            border: 2px solid #e0e0e0;
+            color: #333;
+        }
+        
+        .system { 
+            background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
+            color: #f57f17;
+            font-style: italic;
+            text-align: center;
+            margin: 10px auto;
+            max-width: 60%;
+            font-size: 12px;
+        }
+        
+        .tool { 
+            background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+            color: #2e7d32;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        #events { 
+            height: 0;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 15px;
+            background: #1e1e1e;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+        }
+        
+        #events::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+        
+        #events::-webkit-scrollbar-thumb {
+            background: #FF9900;
+            border-radius: 4px;
+        }
+        
+        .event-filters {
+            padding: 10px 15px;
+            background: #2d2d2d;
+            border-bottom: 2px solid #FF9900;
+            font-size: 11px;
+            color: #d4d4d4;
+        }
+        
+        .event-filters label {
+            display: inline-block;
+            margin-right: 15px;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .event-filters input[type="checkbox"] {
+            margin-right: 5px;
+            cursor: pointer;
+        }
+        
+        .event { 
+            margin: 6px 0;
+            padding: 8px 10px;
+            border-left: 3px solid #667eea;
+            background: #2d2d2d;
+            color: #d4d4d4;
+            border-radius: 4px;
+            animation: slideIn 0.2s ease;
+        }
+        
+        .event.sent { 
+            border-left-color: #4caf50;
+            background: #1a2e1a;
+        }
+        
+        .event.received { 
+            border-left-color: #2196f3;
+            background: #1a2533;
+        }
+        
+        .event-type { 
+            color: #ffa726;
+            font-weight: bold;
+            font-size: 11px;
+            margin-bottom: 3px;
+        }
+        
+        .event-time { 
+            color: #9e9e9e;
+            font-size: 9px;
+            margin-bottom: 4px;
+        }
+        
+        .event-data { 
+            color: #81c784;
+            margin-top: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+            font-size: 10px;
+        }
+        
+        .event-data.audio-event {
+            max-height: 100px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        .event-data.audio-event::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .event-data.audio-event::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        
+        .event-data.audio-event::-webkit-scrollbar-thumb {
+            background: #FF9900;
+            border-radius: 2px;
+        }
+        
+        .search-container {
+            padding: 10px 15px;
+            background: white;
+            border-bottom: 2px solid #e0e0e0;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #FF9900;
+            box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.1);
+        }
+        
+        .search-button {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #FF9900 0%, #EC7211 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .search-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 153, 0, 0.3);
+        }
+        
+        .search-button:active {
+            transform: translateY(0);
+        }
+        
+        .search-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 15px;
+            right: 15px;
+            background: white;
+            border: 2px solid #FF9900;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .search-results.show {
+            display: block;
+        }
+        
+        .search-result-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s ease;
+        }
+        
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-result-item:hover {
+            background: #fff9f0;
+        }
+        
+        .search-result-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #232F3E;
+            margin-bottom: 2px;
+        }
+        
+        .search-result-address {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .search-no-results {
+            padding: 15px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-text">
+                <h1>🎙️ AgentCore Runtime WebSocket Test Client</h1>
+            </div>
+            <div id="status" class="disconnected">Disconnected</div>
+        </div>
+        
+        <div class="content">
+            <div class="config-section">
+                <div class="form-group">
+                    <label for="presignedUrl">🔐 Pre-signed WebSocket URL (SigV4 Query String)</label>
+                    <input type="text" id="presignedUrl" placeholder="wss://endpoint/runtimes/arn/ws?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Signature=...">
+                    <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                        Paste the complete pre-signed URL with SigV4 authentication parameters in the query string
+                    </small>
+                </div>
+            </div>
+            
+            <div class="panels-container">
+                <div class="panel">
+                    <h2>� Conversation</h2>
+                    <div id="messages"></div>
+                    <div class="conversation-controls">
+                        <button id="toggleBtn" onclick="toggleConnection()">🎤 Start Conversation</button>
+                    </div>
+                </div>
+                <div class="panel right-panel">
+                    <div id="map-container">
+                        <div class="map-header">
+                            <span>📍 Your Current Location</span>
+                            <span class="coordinates-display" id="coordinates">32.7767, -96.7970</span>
+                        </div>
+                        <div class="search-container" style="position: relative;">
+                            <input type="text" 
+                                   id="searchInput" 
+                                   class="search-input" 
+                                   placeholder="Search for an address..."
+                                   oninput="handleSearchInput()"
+                                   onkeypress="if(event.key === 'Enter') searchAddress()">
+                            <button class="search-button" onclick="searchAddress()">🔍 Search</button>
+                            <div id="searchResults" class="search-results"></div>
+                        </div>
+                        <div id="map"></div>
+                    </div>
+                    <div class="events-section">
+                        <div class="events-header" onclick="toggleEvents()">
+                            <span>📊 WebSocket Events</span>
+                            <span class="collapse-icon" id="collapse-icon">▼</span>
+                        </div>
+                        <div class="event-filters">
+                            <label><input type="checkbox" id="filter-text" checked> Text Messages</label>
+                            <label><input type="checkbox" id="filter-tools" checked> Tool Calls</label>
+                            <label><input type="checkbox" id="filter-location" checked> Location</label>
+                            <label><input type="checkbox" id="filter-system" checked> System</label>
+                            <label><input type="checkbox" id="filter-audio"> Audio Streams</label>
+                            <label><input type="checkbox" id="filter-interruption"> Interruptions</label>
+                        </div>
+                        <div id="events"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        let ws = null;
+        let audioContext = null;
+        let isRecording = false;
+        let audioPlaybackContext = null;
+        let nextPlayTime = 0;
+        let map = null;
+        let marker = null;
+        
+        // Default to Dallas, Texas (will be updated with user's actual location if permission granted)
+        let currentLocation = {
+            latitude: 32.7767,
+            longitude: -96.7970,
+            accuracy: 10.0
+        };
+        
+        // AWS config (fetched from server)
+        let awsConfig = null;
+        
+        // Initialize map on page load
+        window.addEventListener('DOMContentLoaded', getUserLocationAndInitializeMap);
+        
+        async function getUserLocationAndInitializeMap() {
+            // Try to get user's actual location first
+            if (navigator.geolocation) {
+                try {
+                    // Request user's location
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 5000,
+                            maximumAge: 0
+                        });
+                    });
+                    
+                    // Update location with user's actual position
+                    currentLocation.latitude = position.coords.latitude;
+                    currentLocation.longitude = position.coords.longitude;
+                    currentLocation.accuracy = position.coords.accuracy;
+                    
+                    console.log('✅ User location obtained:', currentLocation);
+                    addMessage('📍 Using your current location', 'system');
+                } catch (error) {
+                    console.warn('⚠️ Geolocation permission denied or unavailable:', error);
+                    console.log('Using default location: Dallas, Texas');
+                    addMessage('📍 Using default location: Dallas, Texas', 'system');
+                }
+            } else {
+                console.warn('⚠️ Geolocation not supported by browser');
+                addMessage('📍 Using default location: Dallas, Texas', 'system');
+            }
+            
+            // Initialize map with either user's location or Dallas fallback
+            await initializeMap();
+        }
+        
+        async function initializeMap() {
+            try {
+                // Step 1: Regenerate credentials to ensure fresh tokens
+                console.log('Regenerating credentials for fresh tokens...');
+                try {
+                    const regenerateResponse = await fetch('/api/regenerate', {
+                        method: 'POST'
+                    });
+                    
+                    if (regenerateResponse.ok) {
+                        const regenerateData = await regenerateResponse.json();
+                        if (regenerateData.status === 'ok') {
+                            console.log('✅ Fresh credentials obtained');
+                        } else {
+                            console.warn('⚠️ Credential regeneration returned non-ok status');
+                        }
+                    } else {
+                        console.warn('⚠️ Failed to regenerate credentials, will try with existing tokens');
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Error regenerating credentials:', error);
+                    console.log('Will attempt to use existing tokens...');
+                }
+                
+                // Step 2: Fetch AWS config from the Python server
+                console.log('Fetching AWS config from server...');
+                const configResponse = await fetch('/api/config');
+                
+                if (!configResponse.ok) {
+                    throw new Error('Failed to fetch AWS config from server');
+                }
+                
+                awsConfig = await configResponse.json();
+                
+                if (awsConfig.status !== 'ok') {
+                    throw new Error('AWS config not available from server');
+                }
+                
+                console.log('AWS config obtained from server');
+                console.log(`  Region: ${awsConfig.region}`);
+                console.log(`  Identity Pool: ${awsConfig.identity_pool_id}`);
+                console.log(`  User Pool: ${awsConfig.user_pool_id}`);
+                console.log(`  Map Name: ${awsConfig.map_name}`);
+                
+                // Step 2: Fetch ID token from the Python server
+                console.log('Fetching ID token from server...');
+                const tokenResponse = await fetch('/api/jwt-token');
+                
+                if (!tokenResponse.ok) {
+                    throw new Error('Failed to fetch ID token from server');
+                }
+                
+                const tokenData = await tokenResponse.json();
+                
+                if (!tokenData.id_token) {
+                    throw new Error('ID token not available from server');
+                }
+                
+                const idToken = tokenData.id_token;
+                console.log('ID token obtained from server');
+                
+                // Step 3: Configure AWS SDK with Cognito Identity Pool using authenticated credentials
+                console.log('Configuring AWS credentials...');
+                AWS.config.region = awsConfig.region;
+                
+                // Use ID token with Identity Pool for authenticated access
+                AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+                    IdentityPoolId: awsConfig.identity_pool_id,
+                    Logins: {
+                        [`cognito-idp.${awsConfig.region}.amazonaws.com/${awsConfig.user_pool_id}`]: idToken
+                    }
+                });
+                
+                // Get credentials (this exchanges the ID token for temporary AWS credentials)
+                await AWS.config.credentials.getPromise();
+                console.log('AWS credentials obtained successfully');
+                
+                // Step 4: Initialize map using AmazonLocation helper with AWS credentials
+                console.log('Initializing map with AmazonLocation helper...');
+                
+                map = await AmazonLocation.createMap(
+                    {
+                        credentials: AWS.config.credentials,
+                        region: awsConfig.region
+                    },
+                    {
+                        container: 'map',
+                        center: [currentLocation.longitude, currentLocation.latitude],
+                        zoom: 12,
+                        style: awsConfig.map_name,
+                        hash: false
+                    }
+                );
+                
+                // Add navigation controls
+                map.addControl(new maplibregl.NavigationControl(), 'top-right');
+                
+                // Create draggable marker
+                marker = new maplibregl.Marker({
+                    draggable: true,
+                    color: '#FF9900'
+                })
+                .setLngLat([currentLocation.longitude, currentLocation.latitude])
+                .addTo(map);
+                
+                // Update coordinates when marker is dragged
+                marker.on('dragend', () => {
+                    const lngLat = marker.getLngLat();
+                    currentLocation.latitude = lngLat.lat;
+                    currentLocation.longitude = lngLat.lng;
+                    updateCoordinatesDisplay();
+                });
+                
+                // Allow clicking on map to move marker
+                map.on('click', (e) => {
+                    marker.setLngLat(e.lngLat);
+                    currentLocation.latitude = e.lngLat.lat;
+                    currentLocation.longitude = e.lngLat.lng;
+                    updateCoordinatesDisplay();
+                });
+                
+                console.log('Map initialized successfully');
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                const errorMsg = error.message || 'Unknown error';
+                addMessage('⚠️ Map initialization failed: ' + errorMsg, 'system');
+                console.error('Full error details:', error);
+            }
+        }
+        
+        function updateCoordinatesDisplay() {
+            const coordsElement = document.getElementById('coordinates');
+            if (coordsElement) {
+                coordsElement.textContent = `${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)}`;
+            }
+        }
+        
+        // Debounce timer for auto-complete
+        let searchDebounceTimer = null;
+        
+        function handleSearchInput() {
+            const searchInput = document.getElementById('searchInput');
+            const searchText = searchInput.value.trim();
+            
+            // Clear previous timer
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+            }
+            
+            // Hide results if input is empty
+            if (!searchText) {
+                const resultsContainer = document.getElementById('searchResults');
+                resultsContainer.classList.remove('show');
+                return;
+            }
+            
+            // Debounce: wait 300ms after user stops typing
+            searchDebounceTimer = setTimeout(() => {
+                getSuggestions(searchText);
+            }, 300);
+        }
+        
+        async function getSuggestions(searchText) {
+            try {
+                // Create AWS Location Service client
+                const location = new AWS.Location({
+                    region: awsConfig.region,
+                    credentials: AWS.config.credentials
+                });
+                
+                const params = {
+                    IndexName: awsConfig.place_index_name,
+                    Text: searchText,
+                    MaxResults: 5
+                };
+                
+                console.log('Getting suggestions for:', searchText);
+                const results = await location.searchPlaceIndexForSuggestions(params).promise();
+                console.log('Suggestions:', results);
+                
+                displaySuggestions(results.Results);
+            } catch (error) {
+                console.error('Suggestions error:', error);
+                // Silently fail for auto-complete
+            }
+        }
+        
+        function displaySuggestions(results) {
+            const resultsContainer = document.getElementById('searchResults');
+            resultsContainer.innerHTML = '';
+            
+            if (!results || results.length === 0) {
+                resultsContainer.classList.remove('show');
+                return;
+            }
+            
+            results.forEach((result) => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                
+                const label = document.createElement('div');
+                label.className = 'search-result-label';
+                label.textContent = result.Text || 'Unknown Location';
+                
+                item.appendChild(label);
+                
+                // When clicking a suggestion, get full place details
+                item.onclick = () => selectSuggestion(result);
+                
+                resultsContainer.appendChild(item);
+            });
+            
+            resultsContainer.classList.add('show');
+        }
+        
+        async function selectSuggestion(suggestion) {
+            try {
+                // Get full place details from the suggestion
+                const location = new AWS.Location({
+                    region: awsConfig.region,
+                    credentials: AWS.config.credentials
+                });
+                
+                const params = {
+                    IndexName: awsConfig.place_index_name,
+                    PlaceId: suggestion.PlaceId
+                };
+                
+                console.log('Getting place details for:', suggestion.PlaceId);
+                const placeResult = await location.getPlace(params).promise();
+                console.log('Place details:', placeResult);
+                
+                const coords = placeResult.Place.Geometry.Point;
+                const longitude = coords[0];
+                const latitude = coords[1];
+                
+                // Update current location
+                currentLocation.latitude = latitude;
+                currentLocation.longitude = longitude;
+                
+                // Move marker
+                if (marker) {
+                    marker.setLngLat([longitude, latitude]);
+                }
+                
+                // Center map on location
+                if (map) {
+                    map.flyTo({
+                        center: [longitude, latitude],
+                        zoom: 15,
+                        duration: 1500
+                    });
+                }
+                
+                // Update coordinates display
+                updateCoordinatesDisplay();
+                
+                // Hide search results
+                const resultsContainer = document.getElementById('searchResults');
+                resultsContainer.classList.remove('show');
+                
+                // Update search input with selected address
+                document.getElementById('searchInput').value = placeResult.Place.Label || suggestion.Text;
+                
+                // Show message
+                addMessage(`📍 Location set to: ${placeResult.Place.Label || suggestion.Text}`, 'system');
+            } catch (error) {
+                console.error('Error getting place details:', error);
+                addMessage(`❌ Failed to get location details: ${error.message}`, 'system');
+            }
+        }
+        
+        async function searchAddress() {
+            const searchInput = document.getElementById('searchInput');
+            const searchText = searchInput.value.trim();
+            
+            if (!searchText) {
+                return;
+            }
+            
+            const searchButton = document.querySelector('.search-button');
+            searchButton.disabled = true;
+            searchButton.textContent = '🔄 Searching...';
+            
+            try {
+                // Create AWS Location Service client
+                const location = new AWS.Location({
+                    region: awsConfig.region,
+                    credentials: AWS.config.credentials
+                });
+                
+                const params = {
+                    IndexName: awsConfig.place_index_name,
+                    Text: searchText,
+                    MaxResults: 5
+                };
+                
+                console.log('Searching for:', searchText);
+                const results = await location.searchPlaceIndexForText(params).promise();
+                console.log('Search results:', results);
+                
+                displaySearchResults(results.Results);
+            } catch (error) {
+                console.error('Search error:', error);
+                addMessage(`❌ Search failed: ${error.message}`, 'system');
+            } finally {
+                searchButton.disabled = false;
+                searchButton.textContent = '🔍 Search';
+            }
+        }
+        
+        function displaySearchResults(results) {
+            const resultsContainer = document.getElementById('searchResults');
+            resultsContainer.innerHTML = '';
+            
+            if (!results || results.length === 0) {
+                resultsContainer.innerHTML = '<div class="search-no-results">No results found</div>';
+                resultsContainer.classList.add('show');
+                return;
+            }
+            
+            results.forEach((result, index) => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                
+                const label = document.createElement('div');
+                label.className = 'search-result-label';
+                label.textContent = result.Place.Label || 'Unknown Location';
+                
+                const address = document.createElement('div');
+                address.className = 'search-result-address';
+                const coords = result.Place.Geometry.Point;
+                address.textContent = `${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
+                
+                item.appendChild(label);
+                item.appendChild(address);
+                
+                item.onclick = () => selectSearchResult(result);
+                
+                resultsContainer.appendChild(item);
+            });
+            
+            resultsContainer.classList.add('show');
+        }
+        
+        function selectSearchResult(result) {
+            const coords = result.Place.Geometry.Point;
+            const longitude = coords[0];
+            const latitude = coords[1];
+            
+            // Update current location
+            currentLocation.latitude = latitude;
+            currentLocation.longitude = longitude;
+            
+            // Move marker
+            if (marker) {
+                marker.setLngLat([longitude, latitude]);
+            }
+            
+            // Center map on location
+            if (map) {
+                map.flyTo({
+                    center: [longitude, latitude],
+                    zoom: 15,
+                    duration: 1500
+                });
+            }
+            
+            // Update coordinates display
+            updateCoordinatesDisplay();
+            
+            // Hide search results
+            const resultsContainer = document.getElementById('searchResults');
+            resultsContainer.classList.remove('show');
+            
+            // Clear search input
+            document.getElementById('searchInput').value = '';
+            
+            // Show message
+            addMessage(`📍 Location set to: ${result.Place.Label}`, 'system');
+        }
+        
+        // Close search results when clicking outside
+        document.addEventListener('click', (event) => {
+            const searchContainer = document.querySelector('.search-container');
+            const resultsContainer = document.getElementById('searchResults');
+            
+            if (searchContainer && !searchContainer.contains(event.target)) {
+                resultsContainer.classList.remove('show');
+            }
+        });
+        
+        function toggleEvents() {
+            const eventsDiv = document.getElementById('events');
+            const collapseIcon = document.getElementById('collapse-icon');
+            
+            if (eventsDiv.style.display === 'none') {
+                eventsDiv.style.display = 'block';
+                collapseIcon.textContent = '▼';
+                collapseIcon.classList.remove('collapsed');
+            } else {
+                eventsDiv.style.display = 'none';
+                collapseIcon.textContent = '▶';
+                collapseIcon.classList.add('collapsed');
+            }
+        }
+        
+        function getMockLocation() {
+            // Return current marker location from map
+            return {
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+                accuracy: 10.0
+            };
+        }
+        
+        function shouldShowEvent(eventType) {
+            // Map event types to filter checkboxes
+            const filterMap = {
+                'bidi_transcript_stream': 'filter-text',
+                'tool_use_stream': 'filter-tools',
+                'tool_result': 'filter-tools',
+                'location_request': 'filter-location',
+                'location_response': 'filter-location',
+                'auth': 'filter-system',
+                'bidi_audio_input': 'filter-audio',
+                'bidi_audio_stream': 'filter-audio',
+                'bidi_interruption': 'filter-interruption'
+            };
+            
+            const filterId = filterMap[eventType];
+            if (!filterId) {
+                // Unknown event types default to system filter
+                return document.getElementById('filter-system')?.checked ?? true;
+            }
+            
+            const checkbox = document.getElementById(filterId);
+            return checkbox ? checkbox.checked : true;
+        }
+    
+        function addMessage(content, type) {
+            const messages = document.getElementById('messages');
+            const message = document.createElement('div');
+            message.className = 'message ' + type;
+            message.textContent = content;
+            messages.appendChild(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function addEvent(direction, type, data) {
+            // Check if event should be filtered
+            if (!shouldShowEvent(type)) {
+                return;
+            }
+            
+            const events = document.getElementById('events');
+            const event = document.createElement('div');
+            event.className = 'event ' + direction;
+            
+            const time = new Date().toLocaleTimeString();
+            const arrow = direction === 'sent' ? '⬆️' : '⬇️';
+            
+            let displayData = data;
+            if (typeof data === 'object') {
+                displayData = JSON.parse(JSON.stringify(data));
+                
+                // Truncate audio field for bidi_audio_input events
+                if (type === 'bidi_audio_input' && displayData.audio && typeof displayData.audio === 'string') {
+                    if (displayData.audio.length > 20) {
+                        displayData.audio = displayData.audio.substring(0, 20) + '... [truncated]';
+                    }
+                }
+                
+                // Truncate audio field for bidi_audio_stream events
+                if (type === 'bidi_audio_stream' && displayData.audio && typeof displayData.audio === 'string') {
+                    if (displayData.audio.length > 20) {
+                        displayData.audio = displayData.audio.substring(0, 20) + '... [truncated]';
+                    }
+                }
+            }
+            
+            const dataStr = typeof displayData === 'object' ? JSON.stringify(displayData, null, 2) : displayData;
+            
+            // Create elements safely without innerHTML
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'event-time';
+            timeDiv.textContent = `${time} ${arrow}`;
+            
+            const typeDiv = document.createElement('div');
+            typeDiv.className = 'event-type';
+            typeDiv.textContent = type;
+            
+            const dataDiv = document.createElement('div');
+            dataDiv.className = 'event-data';
+            dataDiv.textContent = dataStr;
+            
+            event.appendChild(timeDiv);
+            event.appendChild(typeDiv);
+            event.appendChild(dataDiv);
+            
+            events.appendChild(event);
+            events.scrollTop = events.scrollHeight;
+        }
+    
+        function updateStatus(connected, recording = false) {
+            const status = document.getElementById('status');
+            const toggleBtn = document.getElementById('toggleBtn');
+            
+            if (connected) {
+                status.textContent = recording ? '🔴 Recording' : '🟢 Connected';
+                status.className = 'connected';
+                toggleBtn.textContent = '🛑 End Conversation';
+                toggleBtn.className = 'connected';
+            } else {
+                status.textContent = '⚫ Disconnected';
+                status.className = 'disconnected';
+                toggleBtn.textContent = '🎤 Start Conversation';
+                toggleBtn.className = '';
+            }
+        }
+        
+        function toggleConnection() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+    
+        async function playAudioOutput(base64Audio, sampleRate) {
+            if (!audioPlaybackContext) {
+                audioPlaybackContext = new AudioContext({ sampleRate: sampleRate });
+                nextPlayTime = audioPlaybackContext.currentTime;
+            }
+            
+            if (audioPlaybackContext.state === 'suspended') {
+                await audioPlaybackContext.resume();
+            }
+    
+            // Decode base64 to bytes
+            const binaryString = atob(base64Audio);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+    
+            // Convert to Int16 then Float32
+            const int16Data = new Int16Array(bytes.buffer);
+            const float32Data = new Float32Array(int16Data.length);
+            for (let i = 0; i < int16Data.length; i++) {
+                float32Data[i] = int16Data[i] / 32768.0;
+            }
+    
+            // Create and play buffer
+            const buffer = audioPlaybackContext.createBuffer(1, float32Data.length, sampleRate);
+            buffer.getChannelData(0).set(float32Data);
+            
+            const currentTime = audioPlaybackContext.currentTime;
+            if (nextPlayTime < currentTime) {
+                nextPlayTime = currentTime;
+            }
+            
+            const source = audioPlaybackContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioPlaybackContext.destination);
+            source.start(nextPlayTime);
+            nextPlayTime += buffer.duration;
+        }
+    
+        function generateSessionId() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            return Array.from({ length: 50 }, () => 
+                chars.charAt(Math.floor(Math.random() * chars.length))
+            ).join('');
+        }
+        
+        async function connect() {
+            // Clear previous messages and events
+            document.getElementById('messages').textContent = '';
+            document.getElementById('events').textContent = '';
+            
+            // Step 1: Regenerate URL with fresh credentials
+            addMessage('🔄 Regenerating credentials and presigned URL...', 'system');
+            
+            try {
+                const regenerateResponse = await fetch('/api/regenerate', {
+                    method: 'POST'
+                });
+                
+                if (!regenerateResponse.ok) {
+                    const errorData = await regenerateResponse.json();
+                    addMessage(`❌ Failed to regenerate URL: ${errorData.message || 'Unknown error'}`, 'system');
+                    return;
+                }
+                
+                const regenerateData = await regenerateResponse.json();
+                
+                if (regenerateData.status === 'ok' && regenerateData.websocket_url) {
+                    // Update the presigned URL input field
+                    document.getElementById('presignedUrl').value = regenerateData.websocket_url;
+                    addMessage('✅ Fresh credentials obtained', 'system');
+                    addMessage(`⏰ URL expires in ${regenerateData.expires_in} seconds`, 'system');
+                } else {
+                    addMessage('❌ Failed to get new presigned URL', 'system');
+                    return;
+                }
+            } catch (error) {
+                addMessage(`❌ Error regenerating URL: ${error.message}`, 'system');
+                console.error('Regeneration error:', error);
+                return;
+            }
+            
+            // Step 2: Get the updated pre-signed URL
+            const presignedUrl = document.getElementById('presignedUrl').value.trim();
+            
+            if (!presignedUrl) {
+                addMessage('❌ Error: Pre-signed URL is required', 'system');
+                return;
+            }
+            
+            if (!presignedUrl.startsWith('ws://') && !presignedUrl.startsWith('wss://')) {
+                addMessage('❌ Error: URL must start with ws:// or wss://', 'system');
+                return;
+            }
+            
+            // Voice ID is already included in the presigned URL
+            const uri = presignedUrl;
+            
+            addMessage('🔐 Using fresh SigV4 pre-signed URL', 'system');
+            addMessage(`🔗 Connecting to: ${uri.substring(0, 100)}${uri.length > 100 ? '...' : ''}`, 'system');
+            
+            try {
+                ws = new WebSocket(uri);
+                
+                ws.onerror = (error) => {
+                    addMessage(`❌ WebSocket error: ${error.message || 'Connection failed'}`, 'system');
+                    console.error('WebSocket error:', error);
+                    updateStatus(false);
+                };
+            
+                ws.onopen = async () => {
+                addMessage('Connected to BidiAgent', 'system');
+                updateStatus(true);
+                
+                // Send Access Token as first message for authentication
+                try {
+                    const tokenResponse = await fetch('/api/jwt-token');
+                    if (tokenResponse.ok) {
+                        const tokenData = await tokenResponse.json();
+                        if (tokenData.access_token) {
+                            const authMessage = {
+                                type: 'auth',
+                                access_token: tokenData.access_token
+                            };
+                            ws.send(JSON.stringify(authMessage));
+                            addEvent('sent', 'auth', { type: 'auth', access_token: '[REDACTED]' });
+                            addMessage('🔑 Access Token sent for authentication', 'system');
+                            
+                            // Send "Hi" message to initiate conversation
+                            const helloMessage = {
+                                type: 'bidi_text_input',
+                                text: 'Hi'
+                            };
+                            ws.send(JSON.stringify(helloMessage));
+                            addEvent('sent', 'bidi_text_input', helloMessage);
+                            addMessage('👋 Sent greeting to initiate conversation', 'system');
+                        } else {
+                            addMessage('⚠️ Access Token not available', 'system');
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch Access Token:', error);
+                    addMessage('⚠️ Access Token not available', 'system');
+                }
+                
+                // Automatically start recording
+                await startRecording();
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                
+                // Log all received events
+                addEvent('received', data.type, data);
+                
+                switch (data.type) {
+                    case 'bidi_audio_stream':
+                        // Nova Sonic outputs at 16kHz, hardcode until SDK bug is fixed
+                        await playAudioOutput(data.audio, 16000);
+                        break;
+                    case 'bidi_transcript_stream':
+                        const prefix = data.role === 'user' ? '🎤 User' : '🔊 Assistant';
+                        addMessage(`${prefix}: ${data.text}`, data.role);
+                        break;
+                    case 'bidi_interruption':
+                        addMessage('[Interrupted]', 'system');
+                        if (audioPlaybackContext) {
+                            audioPlaybackContext.close();
+                            audioPlaybackContext = null;
+                        }
+                        break;
+                    case 'tool_use_stream':
+                        addMessage(`🔧 Tool: ${data.current_tool_use.name}`, 'tool');
+                        break;
+                    case 'tool_result':
+                        const content = data.tool_result.content[0]?.text || JSON.stringify(data.tool_result.content);
+                        addMessage(`✅ Result: ${content}`, 'tool');
+                        break;
+                    case 'location_request':
+                        const requestId = data.request_id;
+                        addMessage('📍 Location requested by agent', 'system');
+                        
+                        // Get mock location
+                        const location = getMockLocation();
+                        
+                        // Send location response
+                        const locationResponse = {
+                            type: 'location_response',
+                            request_id: requestId,
+                            location: location
+                        };
+                        ws.send(JSON.stringify(locationResponse));
+                        addEvent('sent', 'location_response', locationResponse);
+                        addMessage(`📍 Sent location: ${location.latitude}, ${location.longitude}`, 'system');
+                        break;
+                }
+            };
+            
+                ws.onclose = () => {
+                    addMessage('Disconnected', 'system');
+                    updateStatus(false);
+                    if (isRecording) stopRecording();
+                    if (audioPlaybackContext) {
+                        audioPlaybackContext.close();
+                        audioPlaybackContext = null;
+                    }
+                };
+            } catch (error) {
+                addMessage(`❌ Failed to connect: ${error.message}`, 'system');
+                console.error('Connection error:', error);
+                updateStatus(false);
+            }
+        }
+    
+        function disconnect() {
+            if (isRecording) stopRecording();
+            if (ws) ws.close();
+        }
+    
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } 
+                });
+                
+                audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                let audioChunkCount = 0;
+                processor.onaudioprocess = (e) => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        
+                        // Downsample to 16kHz
+                        const downsampleRatio = audioContext.sampleRate / 16000;
+                        const outputLength = Math.floor(inputData.length / downsampleRatio);
+                        const int16Data = new Int16Array(outputLength);
+                        
+                        for (let i = 0; i < outputLength; i++) {
+                            const sourceIndex = Math.floor(i * downsampleRatio);
+                            int16Data[i] = Math.max(-32768, Math.min(32767, inputData[sourceIndex] * 32768));
+                        }
+                        
+                        // Convert to base64
+                        const bytes = new Uint8Array(int16Data.buffer);
+                        let binary = '';
+                        for (let i = 0; i < bytes.length; i++) {
+                            binary += String.fromCharCode(bytes[i]);
+                        }
+                        const base64Audio = btoa(binary);
+                        
+                        const payload = {
+                            type: "bidi_audio_input",
+                            audio: base64Audio,
+                            format: "pcm",
+                            sample_rate: 16000,
+                            channels: 1
+                        };
+                        ws.send(JSON.stringify(payload));
+                        
+                        // Log every audio chunk with original format
+                        audioChunkCount++;
+                        addEvent('sent', 'bidi_audio_input', payload);
+                    }
+                };
+                
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                
+                isRecording = true;
+                updateStatus(true, true);
+                addMessage('🎤 Recording started - speak now', 'system');
+            } catch (err) {
+                addMessage('❌ Microphone access denied: ' + err.message, 'system');
+            }
+        }
+        
+        function stopRecording() {
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            isRecording = false;
+            addMessage('Recording stopped', 'system');
+        }
+    </script>
+</body>
+</html>

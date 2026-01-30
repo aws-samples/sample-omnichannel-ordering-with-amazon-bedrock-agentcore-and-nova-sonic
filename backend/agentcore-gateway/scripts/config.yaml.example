@@ -1,0 +1,26 @@
+# AgentCore Gateway Configuration
+# Copy this file to config.yaml and update with your values
+
+# AWS Configuration
+aws:
+  region: us-east-1
+  profile: default  # Optional: AWS CLI profile to use (leave as 'default' or specify your profile)
+
+# Backend Infrastructure Resources (from Project 1)
+backend:
+  api_gateway_id: YOUR_API_GATEWAY_ID_HERE  # Example: hj65he2og8
+  api_gateway_stage: prod
+
+# AgentCore Gateway Configuration
+gateway:
+  name: qsr-ordering-gateway
+  description: AgentCore Gateway for QSR ordering system - exposes Backend API as MCP tools
+
+# IAM Configuration
+iam:
+  gateway_role_name: QSRAgentCoreGatewayRole
+
+# Output Configuration
+output:
+  save_to_file: true
+  output_file: deployment-outputs.json

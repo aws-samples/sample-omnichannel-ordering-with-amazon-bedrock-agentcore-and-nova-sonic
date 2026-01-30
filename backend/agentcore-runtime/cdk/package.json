@@ -1,0 +1,40 @@
+{
+  "name": "agentcore-runtime-cdk",
+  "version": "1.0.0",
+  "description": "CDK infrastructure for AgentCore Runtime deployment",
+  "main": "bin/app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "deploy": "npm run build && cdk deploy --all",
+    "deploy:infra": "npm run build && cdk deploy AgentCoreInfraStack",
+    "deploy:runtime": "npm run build && cdk deploy AgentCoreRuntimeStack",
+    "destroy": "cdk destroy --all",
+    "synth": "npm run build && cdk synth",
+    "nag": "npm run build && cdk synth --quiet"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.5",
+    "@types/node": "^20.6.0",
+    "cdk-nag": "^2.37.55",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "~5.2.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.3.0"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "agentcore",
+    "runtime",
+    "bedrock",
+    "websocket"
+  ],
+  "author": "Team Member C",
+  "license": "MIT"
+}

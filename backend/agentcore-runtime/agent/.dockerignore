@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# CDK
+cdk/
+cdk.out/
+node_modules/
+*.json
+*.ts
+*.js
+
+# Logs
+*.log
+
+# Test files
+test_*.py
+*_test.py
+tests/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Development
+.env
+.env.local

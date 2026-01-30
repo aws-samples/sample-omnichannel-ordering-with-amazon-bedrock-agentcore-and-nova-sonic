@@ -1,0 +1,3 @@
+# Test client dependencies
+boto3>=1.35.0
+requests>=2.32.0

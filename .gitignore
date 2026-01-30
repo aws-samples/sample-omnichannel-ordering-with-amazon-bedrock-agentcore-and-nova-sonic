@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.venv/
+venv/
+ENV/
+env/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.eggs/
+cdk.out/
+.cdk.staging/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Testing
+coverage/
+.nyc_output/
+.pytest_cache/
+*.cover
+.hypothesis/
+
+# AWS
+.aws-sam/
+samconfig.toml
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# CDK deployment outputs
+cdk-outputs/
+
+# OS
+Thumbs.db
+samples/
+
+# Kiro internal planning and specs (keep locally, don't commit to public repo)
+.kiro/

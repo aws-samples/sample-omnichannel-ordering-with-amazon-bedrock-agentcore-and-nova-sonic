@@ -42,7 +42,7 @@ This guidance demonstrates how to build an AI-powered voice ordering system for 
 
 **Who**: QSR businesses, restaurant chains, and developers building voice-first AI applications.
 
-**Why**: Transform commute time into ordering time with hands-free voice ordering, personalized recommendations, and route-optimized pickup locations. The system achieves 95%+ order accuracy and can reduce service times by 22-88 seconds.
+**Why**: Transform commute time into ordering time with hands-free voice ordering, personalized recommendations, and route-optimized pickup locations. Voice ordering systems in the QSR industry have demonstrated significant improvements in order accuracy and service time reduction.
 
 The solution leverages:
 - [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agents/) for agent hosting and bidirectional streaming
@@ -129,15 +129,20 @@ The fastest way to deploy the entire system:
 git clone https://github.com/aws-samples/qsr-voice-ordering-agentcore.git
 cd qsr-voice-ordering-agentcore
 
-# Deploy all components
-./deploy-all.sh
+# Deploy all components (replace with your email and name)
+./deploy-all.sh --user-email your-email@example.com --user-name "Your Name"
 ```
+
+**Required Parameters**:
+- `--user-email`: Your email address (receives temporary Cognito password)
+- `--user-name`: Your full name (for the test user profile)
 
 The script will:
 1. Deploy Backend Infrastructure (DynamoDB, Lambda, API Gateway, Cognito)
-2. Deploy AgentCore Gateway (MCP server)
-3. Deploy AgentCore Runtime (Agent with Nova Sonic v2)
-4. Display deployment outputs for configuration
+2. Create test user "AppUser" and send temporary password to your email
+3. Deploy AgentCore Gateway (MCP server)
+4. Deploy AgentCore Runtime (Agent with Nova Sonic v2)
+5. Display deployment outputs for configuration
 
 **Success Criteria**: All stacks deploy successfully and outputs are saved to `cdk-outputs/` directory.
 
@@ -151,7 +156,11 @@ For step-by-step deployment of individual components, see [docs/DEPLOYMENT.md](d
 3. [AgentCore Runtime](backend/agentcore-runtime/README.md) - Agent with Nova Sonic v2
 4. [Synthetic Data](backend/synthetic-data/README.md) - Sample data population (optional)
 
-**Important - Temporary Password**: During deployment, AWS Cognito creates a test user and sends a temporary password to your email. Check your email (including spam folder) for the password. The first login will prompt you to change it.
+**Important - Test User Setup**: 
+- The deployment script requires `--user-email` and `--user-name` parameters
+- AWS Cognito creates a test user "AppUser" and sends a temporary password to your email
+- Check your email (including spam folder) for the password
+- The first login will prompt you to change the temporary password
 
 ## Deployment Validation
 
