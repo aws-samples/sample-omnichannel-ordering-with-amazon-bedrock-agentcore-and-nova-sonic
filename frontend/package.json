@@ -1,0 +1,36 @@
+{
+  "name": "qsr-voice-ordering-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/generate-config.js",
+    "dev": "vite",
+    "prebuild": "node scripts/generate-config.js",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "@aws-amplify/ui-react": "^6.1.0",
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@aws-sdk/client-cognito-identity": "^3.500.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.500.0",
+    "@aws-sdk/credential-providers": "^3.500.0",
+    "@smithy/signature-v4": "^2.0.0",
+    "aws-amplify": "^6.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
+  }
+}
