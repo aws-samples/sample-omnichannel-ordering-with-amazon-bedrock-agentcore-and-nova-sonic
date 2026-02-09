@@ -14,6 +14,7 @@ interface Message {
   content: string;
   timestamp: Date;
   isAudio?: boolean;
+  isComplete?: boolean; // Flag to indicate if message is finished streaming
 }
 
 interface ChatInterfaceProps {
@@ -102,11 +103,11 @@ export function ChatInterface({
       });
 
       client.onTranscription((text, role) => {
-        addMessage(role, text, false);
+        addMessage(role, text, false, true); // User transcriptions are always complete
       });
 
       client.onResponse((text) => {
-        addMessage('assistant', text, false);
+        addMessage('assistant', text, false, false); // Assistant responses stream, not complete yet
       });
 
       client.onAudio((audioData) => {
@@ -125,7 +126,14 @@ export function ChatInterface({
           playbackContextRef.current = null;
           nextPlayTimeRef.current = 0;
         }
-        addMessage('assistant', '[Interrupted]', false);
+        // Mark current assistant message as complete when interrupted
+        markLastAssistantMessageComplete();
+        addMessage('assistant', '[Interrupted]', false, true);
+      });
+
+      client.onTurnComplete(() => {
+        // Mark current assistant message as complete when turn ends
+        markLastAssistantMessageComplete();
       });
 
       wsClientRef.current = client;
@@ -144,13 +152,49 @@ export function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const addMessage = (role: 'user' | 'assistant', content: string, isAudio: boolean) => {
-    setMessages(prev => [...prev, {
-      role,
-      content,
-      timestamp: new Date(),
-      isAudio
-    }]);
+  const addMessage = (role: 'user' | 'assistant', content: string, isAudio: boolean, isComplete: boolean = true) => {
+    setMessages(prev => {
+      // If this is an assistant message and the last message is also an incomplete assistant message,
+      // append to it instead of creating a new one
+      if (role === 'assistant' && prev.length > 0) {
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage.role === 'assistant' && !lastMessage.isComplete) {
+          // Append to existing message with a space separator
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...lastMessage,
+            content: lastMessage.content + ' ' + content,
+            isComplete
+          };
+          return updated;
+        }
+      }
+      
+      // Otherwise, create a new message
+      return [...prev, {
+        role,
+        content,
+        timestamp: new Date(),
+        isAudio,
+        isComplete
+      }];
+    });
+  };
+
+  const markLastAssistantMessageComplete = () => {
+    setMessages(prev => {
+      if (prev.length === 0) return prev;
+      const lastMessage = prev[prev.length - 1];
+      if (lastMessage.role === 'assistant' && !lastMessage.isComplete) {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...lastMessage,
+          isComplete: true
+        };
+        return updated;
+      }
+      return prev;
+    });
   };
 
   const handleSendText = () => {

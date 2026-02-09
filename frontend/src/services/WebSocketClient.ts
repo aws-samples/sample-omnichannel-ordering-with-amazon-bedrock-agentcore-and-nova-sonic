@@ -38,6 +38,7 @@ export class WebSocketClient {
   private onConnectedCallback?: () => void;
   private onDisconnectedCallback?: () => void;
   private onInterruptionCallback?: () => void;
+  private onTurnCompleteCallback?: () => void;
 
   constructor(options: WebSocketClientOptions) {
     this.options = options;
@@ -222,11 +223,27 @@ export class WebSocketClient {
       switch (data.type) {
         case 'bidi_transcript_stream':
           // Transcription from user or assistant
-          if (this.onTranscriptionCallback) {
-            this.onTranscriptionCallback(
-              data.transcript || data.text,
-              data.role || 'assistant'
-            );
+          
+          if (data.role === 'user') {
+            // User transcription - always show it (even if is_final:true)
+            if (this.onTranscriptionCallback) {
+              this.onTranscriptionCallback(
+                data.transcript || data.text,
+                'user'
+              );
+            }
+          } else if (data.role === 'assistant' || !data.role) {
+            // Assistant text response
+            // Skip duplicate final transcripts (Strands sends both is_final:false and is_final:true)
+            if (data.is_final === true) {
+              console.log('⏭️ Skipping duplicate final assistant transcript');
+              break;
+            }
+            
+            // Stream the assistant response
+            if (this.onResponseCallback) {
+              this.onResponseCallback(data.transcript || data.text);
+            }
           }
           break;
 
@@ -251,6 +268,10 @@ export class WebSocketClient {
           console.log('🔇 Interruption detected - stopping audio');
           if (this.onInterruptionCallback) {
             this.onInterruptionCallback();
+          }
+          // Mark current turn as complete
+          if (this.onTurnCompleteCallback) {
+            this.onTurnCompleteCallback();
           }
           break;
 
@@ -395,6 +416,10 @@ export class WebSocketClient {
 
   onInterruption(callback: () => void): void {
     this.onInterruptionCallback = callback;
+  }
+
+  onTurnComplete(callback: () => void): void {
+    this.onTurnCompleteCallback = callback;
   }
 
   // Utility functions
