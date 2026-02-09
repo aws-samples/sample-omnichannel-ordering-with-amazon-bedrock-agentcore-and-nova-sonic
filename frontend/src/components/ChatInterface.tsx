@@ -44,6 +44,7 @@ export function ChatInterface({
   const playbackContextRef = useRef<AudioContext | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   // Get user's location on mount
   useEffect(() => {
@@ -214,6 +215,22 @@ export function ChatInterface({
 
   const startRecording = async () => {
     try {
+      // Request wake lock to keep screen on during voice interaction
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+          console.log('🔒 Screen wake lock acquired');
+          
+          // Listen for wake lock release
+          wakeLockRef.current.addEventListener('release', () => {
+            console.log('🔓 Screen wake lock released');
+          });
+        } catch (err) {
+          console.warn('⚠️ Wake lock request failed:', err);
+          // Continue anyway - wake lock is a nice-to-have, not critical
+        }
+      }
+
       // Connect WebSocket if not connected
       if (!wsClientRef.current?.isConnected()) {
         await initWebSocket();
@@ -266,6 +283,18 @@ export function ChatInterface({
   };
 
   const stopRecording = () => {
+    // Release wake lock
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release()
+        .then(() => {
+          console.log('🔓 Screen wake lock released manually');
+          wakeLockRef.current = null;
+        })
+        .catch((err) => {
+          console.warn('⚠️ Failed to release wake lock:', err);
+        });
+    }
+
     // Stop audio recording
     if (recordingContextRef.current && isRecording) {
       recordingContextRef.current.close();
