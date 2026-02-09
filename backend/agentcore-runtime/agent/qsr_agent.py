@@ -279,7 +279,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
     await websocket.accept()
 
-    voice_id = websocket.query_params.get("voice_id", "matthew")
+    voice_id = websocket.query_params.get("voice_id", "tiffany")
     logger.info(f"🔌 Connection from {websocket.client}, voice: {voice_id}")
     
     # Set the global websocket reference for the location tool
