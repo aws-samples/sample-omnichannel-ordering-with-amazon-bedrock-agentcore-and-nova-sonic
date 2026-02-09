@@ -605,7 +605,8 @@ export function ChatInterface({
             borderRadius: '28px',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
             animation: 'slideIn 0.3s ease-out',
-            marginRight: '8px'
+            marginRight: '8px',
+            minWidth: 0 // Allow flex shrinking
           }}>
             <input
               type="text"
@@ -617,6 +618,7 @@ export function ChatInterface({
               autoFocus
               style={{
                 flex: 1,
+                minWidth: 0, // Allow input to shrink
                 padding: '10px 12px',
                 border: 'none',
                 borderRadius: '20px',
