@@ -18,7 +18,6 @@ import { SettingsManager } from '../services/SettingsManager';
 interface AuthComponentProps {
   settings: AppSettings;
   onAuthSuccess: (credentials: AWSCredentials, accessToken: string) => void;
-  onEditSettings: () => void;
 }
 
 // Inner component that has access to user state
@@ -119,7 +118,7 @@ function AuthenticatedContent({
   );
 }
 
-export function AuthComponent({ settings, onAuthSuccess, onEditSettings }: AuthComponentProps) {
+export function AuthComponent({ settings, onAuthSuccess }: AuthComponentProps) {
   useEffect(() => {
     // Configure Amplify with Cognito settings
     Amplify.configure({
@@ -144,7 +143,7 @@ export function AuthComponent({ settings, onAuthSuccess, onEditSettings }: AuthC
       alignItems: 'center', 
       justifyContent: 'center',
       padding: '20px',
-      backgroundColor: '#f5f5f5'
+      backgroundColor: '#1A1A1A'
     }}>
       <div style={{ 
         maxWidth: '500px', 
@@ -152,10 +151,10 @@ export function AuthComponent({ settings, onAuthSuccess, onEditSettings }: AuthC
         backgroundColor: 'white',
         borderRadius: '8px',
         padding: '30px',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+        boxShadow: '0 4px 20px rgba(228, 0, 43, 0.15)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <h1 style={{ margin: '0 0 10px 0', color: '#333' }}>🎙️ QSR Voice Ordering</h1>
+          <h1 style={{ margin: '0 0 10px 0', color: '#E4002B' }}>🎙️ QSR Voice Ordering</h1>
           <p style={{ margin: 0, color: '#666' }}>Sign in to start ordering</p>
         </div>
 
@@ -167,25 +166,6 @@ export function AuthComponent({ settings, onAuthSuccess, onEditSettings }: AuthC
                 return (
                   <div style={{ textAlign: 'center', padding: '20px 0' }}>
                     <h3 style={{ margin: 0 }}>Sign In</h3>
-                  </div>
-                );
-              },
-              Footer() {
-                return (
-                  <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                    <button
-                      onClick={onEditSettings}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#0066cc',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        fontSize: '14px'
-                      }}
-                    >
-                      Edit Settings
-                    </button>
                   </div>
                 );
               }

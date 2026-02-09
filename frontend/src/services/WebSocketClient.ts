@@ -39,6 +39,8 @@ export class WebSocketClient {
   private onDisconnectedCallback?: () => void;
   private onInterruptionCallback?: () => void;
   private onTurnCompleteCallback?: () => void;
+  private onToolStartCallback?: (toolName: string) => void;
+  private onToolEndCallback?: () => void;
 
   constructor(options: WebSocketClientOptions) {
     this.options = options;
@@ -277,12 +279,19 @@ export class WebSocketClient {
 
         case 'tool_use_stream':
           // Tool invocation notification
-          console.log('🔧 Tool invoked:', data.current_tool_use?.name || 'unknown');
+          const toolName = data.current_tool_use?.name || 'unknown';
+          console.log('🔧 Tool invoked:', toolName);
+          if (this.onToolStartCallback) {
+            this.onToolStartCallback(toolName);
+          }
           break;
 
         case 'tool_result':
           // Tool result notification
           console.log('✅ Tool result received');
+          if (this.onToolEndCallback) {
+            this.onToolEndCallback();
+          }
           break;
 
         case 'location_request':
@@ -420,6 +429,14 @@ export class WebSocketClient {
 
   onTurnComplete(callback: () => void): void {
     this.onTurnCompleteCallback = callback;
+  }
+
+  onToolStart(callback: (toolName: string) => void): void {
+    this.onToolStartCallback = callback;
+  }
+
+  onToolEnd(callback: () => void): void {
+    this.onToolEndCallback = callback;
   }
 
   // Utility functions

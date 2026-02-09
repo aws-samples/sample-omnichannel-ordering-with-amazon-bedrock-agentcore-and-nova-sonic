@@ -22,15 +22,13 @@ interface ChatInterfaceProps {
   credentials: AWSCredentials;
   accessToken: string;
   onSignOut: () => void;
-  onEditSettings: () => void;
 }
 
 export function ChatInterface({ 
   settings, 
   credentials, 
   accessToken,
-  onSignOut, 
-  onEditSettings 
+  onSignOut
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -38,6 +36,8 @@ export function ChatInterface({
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [currentTool, setCurrentTool] = useState<string | null>(null);
+  const [showTextInput, setShowTextInput] = useState(false);
 
   const wsClientRef = useRef<WebSocketClient | null>(null);
   const recordingContextRef = useRef<AudioContext | null>(null);
@@ -137,6 +137,16 @@ export function ChatInterface({
         markLastAssistantMessageComplete();
       });
 
+      client.onToolStart((toolName) => {
+        // Show tool execution banner
+        setCurrentTool(toolName);
+      });
+
+      client.onToolEnd(() => {
+        // Hide tool execution banner
+        setCurrentTool(null);
+      });
+
       wsClientRef.current = client;
 
       // Connect
@@ -196,6 +206,23 @@ export function ChatInterface({
       }
       return prev;
     });
+  };
+
+  const getToolDisplayName = (toolName: string): string => {
+    // Convert tool names to user-friendly display names
+    const toolMap: Record<string, string> = {
+      'get_customer_location': '📍 Getting your location...',
+      'qsr-backend-api___GetPreviousOrders': '📋 Loading previous orders...',
+      'qsr-backend-api___GetNearestLocations': '🗺️ Finding nearby restaurants...',
+      'qsr-backend-api___GetMenu': '📖 Loading menu...',
+      'qsr-backend-api___AddToCart': '🛒 Adding to cart...',
+      'qsr-backend-api___PlaceOrder': '✅ Placing your order...',
+      'qsr-backend-api___GetCustomerProfile': '👤 Loading your profile...',
+      'qsr-backend-api___GeocodeAddress': '📍 Looking up address...',
+      'qsr-backend-api___FindLocationAlongRoute': '🛣️ Finding locations along route...'
+    };
+    
+    return toolMap[toolName] || `🔧 ${toolName}...`;
   };
 
   const handleSendText = () => {
@@ -274,7 +301,6 @@ export function ChatInterface({
       processor.connect(audioContext.destination);
 
       setIsRecording(true);
-      addMessage('user', '🎤 Recording...', true);
 
     } catch (err) {
       setError('Failed to access microphone');
@@ -376,53 +402,55 @@ export function ChatInterface({
     <div style={{ 
       display: 'flex', 
       flexDirection: 'column', 
-      height: '100vh',
-      backgroundColor: '#f5f5f5'
+      height: '100vh', // Use standard viewport height
+      minHeight: '-webkit-fill-available', // Better mobile support
+      backgroundColor: '#F5F5F5',
+      position: 'relative',
+      overflow: 'hidden' // Prevent body scroll
     }}>
-      {/* Header */}
+      {/* Header - Fixed */}
       <div style={{ 
-        backgroundColor: 'white', 
-        padding: '15px 20px',
-        borderBottom: '1px solid #ddd',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
+        backgroundColor: '#1A1A1A', 
+        padding: '20px 20px 15px 20px',
+        color: 'white',
+        flexShrink: 0,
+        position: 'sticky',
+        top: 0,
+        zIndex: 100
       }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '20px' }}>🎙️ QSR Voice Ordering</h2>
-          <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-            {isConnected ? (
-              <span style={{ color: '#28a745' }}>● Connected</span>
-            ) : (
-              <span style={{ color: '#dc3545' }}>● Disconnected</span>
-            )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                backgroundColor: '#E4002B',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px'
+              }}>
+                🎙️
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>QSR Voice AI</h2>
+                <p style={{ margin: 0, fontSize: '12px', opacity: 0.7 }}>
+                  {isConnected ? '● Connected' : '● Disconnected'}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            onClick={onEditSettings}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            ⚙️ Settings
-          </button>
           <button
             onClick={onSignOut}
             style={{
-              padding: '8px 16px',
-              backgroundColor: '#dc3545',
+              padding: '6px 12px',
+              backgroundColor: 'rgba(255,255,255,0.1)',
               color: 'white',
-              border: 'none',
-              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '6px',
               cursor: 'pointer',
-              fontSize: '14px'
+              fontSize: '12px'
             }}
           >
             Sign Out
@@ -430,37 +458,60 @@ export function ChatInterface({
         </div>
       </div>
 
+      {/* Tool Execution Banner */}
+      {currentTool && (
+        <div style={{
+          backgroundColor: '#FDB913',
+          color: '#1A1A1A',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontWeight: '500',
+          fontSize: '14px'
+        }}>
+          <span style={{ animation: 'pulse 1.5s ease-in-out infinite' }}>🔧</span>
+          <span>{getToolDisplayName(currentTool)}</span>
+        </div>
+      )}
+
       {/* Error Banner */}
       {error && (
         <div style={{
-          backgroundColor: '#f8d7da',
-          color: '#721c24',
-          padding: '10px 20px',
-          borderBottom: '1px solid #f5c6cb'
+          backgroundColor: '#E4002B',
+          color: 'white',
+          padding: '12px 20px',
+          fontSize: '14px'
         }}>
           ⚠️ {error}
         </div>
       )}
 
-      {/* Messages */}
+      {/* Messages Area - Scrollable */}
       <div style={{ 
         flex: 1, 
-        overflowY: 'auto', 
+        overflowY: 'auto',
+        overflowX: 'hidden',
         padding: '20px',
+        paddingBottom: '120px', // Space for floating buttons
         display: 'flex',
         flexDirection: 'column',
-        gap: '15px'
+        gap: '16px',
+        backgroundColor: 'white',
+        WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
       }}>
         {messages.length === 0 && (
           <div style={{ 
             textAlign: 'center', 
             color: '#999', 
-            marginTop: '50px' 
+            marginTop: '60px' 
           }}>
-            <p style={{ fontSize: '18px', marginBottom: '10px' }}>👋 Welcome!</p>
-            <p>Start a conversation by typing or using voice</p>
-            <p style={{ fontSize: '14px', marginTop: '20px' }}>
-              Try saying: "I'd like to place an order"
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎙️</div>
+            <p style={{ fontSize: '18px', marginBottom: '8px', color: '#1A1A1A', fontWeight: '500' }}>
+              Welcome to Voice Ordering
+            </p>
+            <p style={{ fontSize: '14px', color: '#666' }}>
+              Tap the microphone to start your order
             </p>
           </div>
         )}
@@ -470,26 +521,30 @@ export function ChatInterface({
             key={idx}
             style={{
               alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '70%'
+              maxWidth: '75%'
             }}
           >
             <div style={{
-              backgroundColor: msg.role === 'user' ? '#007bff' : 'white',
-              color: msg.role === 'user' ? 'white' : '#333',
-              padding: '12px 16px',
-              borderRadius: '12px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+              backgroundColor: msg.role === 'user' ? '#E4002B' : '#F8F8F8',
+              color: msg.role === 'user' ? 'white' : '#1A1A1A',
+              padding: '14px 18px',
+              borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
+              border: msg.role === 'assistant' ? '1px solid #E8E8E8' : 'none'
             }}>
-              <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>
+              <div style={{ fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
                 {msg.content}
               </div>
               <div style={{ 
                 fontSize: '11px', 
-                marginTop: '5px',
-                opacity: 0.7
+                marginTop: '6px',
+                opacity: 0.6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
               }}>
-                {msg.timestamp.toLocaleTimeString()}
-                {msg.isAudio && ' 🎤'}
+                <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                {msg.isAudio && <span>🎤</span>}
               </div>
             </div>
           </div>
@@ -497,83 +552,156 @@ export function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div style={{ 
-        backgroundColor: 'white', 
-        padding: '15px 20px',
-        borderTop: '1px solid #ddd'
+      {/* Floating Action Buttons - Fixed to viewport */}
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '16px',
+        left: showTextInput ? '16px' : 'auto', // Expand to full width when text input shown
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: '10px',
+        zIndex: 1000
       }}>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {/* Voice Button */}
+        {/* Recording Indicator (above buttons) */}
+        {isRecording && !showTextInput && (
+          <div style={{
+            position: 'absolute',
+            bottom: '70px',
+            right: 0,
+            backgroundColor: '#1A1A1A',
+            color: 'white',
+            padding: '6px 12px',
+            borderRadius: '16px',
+            fontSize: '11px',
+            fontWeight: '500',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            whiteSpace: 'nowrap'
+          }}>
+            <span style={{ 
+              width: '6px', 
+              height: '6px', 
+              borderRadius: '50%', 
+              backgroundColor: '#E4002B',
+              animation: 'pulse 1.5s ease-in-out infinite'
+            }} />
+            <span>Listening...</span>
+          </div>
+        )}
+
+        {/* Text Input (expands from keyboard button) */}
+        {showTextInput && (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: 'white',
+            padding: '6px 10px',
+            borderRadius: '28px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            animation: 'slideIn 0.3s ease-out',
+            marginRight: '8px'
+          }}>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Type message..."
+              disabled={!isConnected}
+              autoFocus
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                border: 'none',
+                borderRadius: '20px',
+                fontSize: '16px', // 16px prevents iOS zoom
+                outline: 'none',
+                backgroundColor: '#F8F8F8'
+              }}
+            />
+            {inputText.trim() && (
+              <button
+                onClick={handleSendText}
+                disabled={!isConnected}
+                style={{
+                  padding: '8px 14px',
+                  backgroundColor: '#E4002B',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '18px',
+                  cursor: isConnected ? 'pointer' : 'not-allowed',
+                  opacity: isConnected ? 1 : 0.4,
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
+                }}
+              >
+                Send
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Keyboard/Close Button (only show when recording) */}
+        {isRecording && (
           <button
-            onClick={isRecording ? stopRecording : startRecording}
+            onClick={() => setShowTextInput(!showTextInput)}
             style={{
-              width: '50px',
-              height: '50px',
+              width: '48px',
+              height: '48px',
               borderRadius: '50%',
               border: 'none',
-              backgroundColor: isRecording ? '#dc3545' : '#28a745',
-              color: 'white',
-              fontSize: '24px',
+              backgroundColor: showTextInput ? '#1A1A1A' : '#FDB913',
+              color: showTextInput ? 'white' : '#1A1A1A',
+              fontSize: '20px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              boxShadow: showTextInput 
+                ? '0 4px 12px rgba(26, 26, 26, 0.4)'
+                : '0 4px 12px rgba(253, 185, 19, 0.4)',
+              transition: 'all 0.3s ease',
+              flexShrink: 0
             }}
-            title={isRecording ? 'Stop recording' : 'Start recording'}
+            title={showTextInput ? 'Close text input' : 'Switch to text input'}
           >
-            {isRecording ? '⏹️' : '🎤'}
+            {showTextInput ? '✕' : '⌨️'}
           </button>
+        )}
 
-          {/* Text Input */}
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type your message..."
-            disabled={!isConnected}
-            style={{
-              flex: 1,
-              padding: '12px 16px',
-              border: '1px solid #ddd',
-              borderRadius: '25px',
-              fontSize: '14px',
-              outline: 'none'
-            }}
-          />
-
-          {/* Send Button */}
-          <button
-            onClick={handleSendText}
-            disabled={!isConnected || !inputText.trim()}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '25px',
-              cursor: isConnected && inputText.trim() ? 'pointer' : 'not-allowed',
-              opacity: isConnected && inputText.trim() ? 1 : 0.5,
-              fontSize: '14px'
-            }}
-          >
-            Send
-          </button>
-        </div>
-
-        <div style={{ 
-          marginTop: '10px', 
-          fontSize: '12px', 
-          color: '#666',
-          textAlign: 'center'
-        }}>
-          {isRecording ? (
-            <span style={{ color: '#dc3545' }}>🔴 Recording... Click to stop</span>
-          ) : (
-            <span>Click the microphone to start voice ordering</span>
-          )}
-        </div>
+        {/* Main Voice/Stop Button */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          style={{
+            width: '56px',
+            height: '56px',
+            borderRadius: '50%',
+            border: 'none',
+            backgroundColor: isRecording ? '#1A1A1A' : '#E4002B',
+            color: 'white',
+            fontSize: '26px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: isRecording 
+              ? '0 6px 20px rgba(26, 26, 26, 0.4)' 
+              : '0 6px 20px rgba(228, 0, 43, 0.4)',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0
+          }}
+          title={isRecording ? 'Stop' : 'Start voice ordering'}
+        >
+          {isRecording ? '⏹️' : '🎤'}
+        </button>
       </div>
     </div>
   );
