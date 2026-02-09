@@ -125,7 +125,7 @@ export function ChatInterface({
           playbackContextRef.current = null;
           nextPlayTimeRef.current = 0;
         }
-        addMessage('[Interrupted]', 'assistant');
+        addMessage('assistant', '[Interrupted]', false);
       });
 
       wsClientRef.current = client;

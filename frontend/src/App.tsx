@@ -8,7 +8,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import { signOut } from 'aws-amplify/auth';
+import { Amplify } from 'aws-amplify';
+import { signOut, getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
+import { fromCognitoIdentityPool } from '@aws-sdk/credential-providers';
 import { SettingsManager } from './services/SettingsManager';
 import { SettingsScreen } from './components/SettingsScreen';
 import { AuthComponent } from './components/AuthComponent';
@@ -24,32 +26,90 @@ function App() {
   const [accessToken, setAccessToken] = useState<string>('');
 
   useEffect(() => {
-    // Check if settings are configured
-    const storedSettings = SettingsManager.getSettings();
-    
-    if (storedSettings && SettingsManager.isConfigured()) {
-      setSettings(storedSettings);
+    const initializeApp = async () => {
+      // Check if settings are configured
+      const storedSettings = SettingsManager.getSettings();
       
-      // Check if credentials are still valid
-      const storedCredentials = SettingsManager.getCredentials();
-      if (storedCredentials) {
-        console.log('⚠️ Found stored credentials but NO access token - forcing re-auth');
-        // Don't go to chat without access token - force re-authentication
+      if (storedSettings && SettingsManager.isConfigured()) {
+        setSettings(storedSettings);
+        
+        // Configure Amplify with stored settings
+        Amplify.configure({
+          Auth: {
+            Cognito: {
+              userPoolId: storedSettings.cognito.userPoolId,
+              userPoolClientId: storedSettings.cognito.userPoolClientId,
+              identityPoolId: storedSettings.cognito.identityPoolId,
+              loginWith: {
+                email: true
+              }
+            }
+          }
+        });
+
+        // Check if there's an existing Amplify session
+        try {
+          const currentUser = await getCurrentUser();
+          console.log('✅ Found existing Amplify session for user:', currentUser.username);
+
+          // Get the auth session with tokens
+          const session = await fetchAuthSession();
+          const idToken = session.tokens?.idToken?.toString();
+          const accessToken = session.tokens?.accessToken?.toString();
+
+          if (idToken && accessToken) {
+            console.log('✅ Valid session tokens found, restoring session');
+
+            // Get temporary AWS credentials from Cognito Identity Pool
+            const credentialsProvider = fromCognitoIdentityPool({
+              clientConfig: { region: storedSettings.cognito.region },
+              identityPoolId: storedSettings.cognito.identityPoolId,
+              logins: {
+                [`cognito-idp.${storedSettings.cognito.region}.amazonaws.com/${storedSettings.cognito.userPoolId}`]: idToken
+              }
+            });
+
+            const awsCredentials = await credentialsProvider();
+
+            // Format credentials
+            const formattedCredentials: AWSCredentials = {
+              AccessKeyId: awsCredentials.accessKeyId,
+              SecretKey: awsCredentials.secretAccessKey,
+              SessionToken: awsCredentials.sessionToken || '',
+              Expiration: awsCredentials.expiration?.toISOString() || new Date(Date.now() + 3600000).toISOString()
+            };
+
+            // Save credentials
+            SettingsManager.saveCredentials(formattedCredentials);
+
+            // Restore session state
+            setCredentials(formattedCredentials);
+            setAccessToken(accessToken);
+            setAppState('chat');
+            console.log('✅ Session restored successfully');
+            return;
+          }
+        } catch (error) {
+          // No existing session or session expired
+          console.log('ℹ️ No valid session found, showing auth screen');
+        }
+
+        // No valid session, show auth screen
         setAppState('auth');
       } else {
-        setAppState('auth');
+        // Try to load from environment
+        const envSettings = SettingsManager.loadFromEnvironment();
+        if (envSettings) {
+          setSettings(envSettings);
+          SettingsManager.saveSettings(envSettings);
+          setAppState('auth');
+        } else {
+          setAppState('settings');
+        }
       }
-    } else {
-      // Try to load from environment
-      const envSettings = SettingsManager.loadFromEnvironment();
-      if (envSettings) {
-        setSettings(envSettings);
-        SettingsManager.saveSettings(envSettings);
-        setAppState('auth');
-      } else {
-        setAppState('settings');
-      }
-    }
+    };
+
+    initializeApp();
   }, []);
 
   const handleSettingsSave = (newSettings: AppSettings) => {

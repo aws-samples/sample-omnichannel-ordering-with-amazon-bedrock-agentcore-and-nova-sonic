@@ -29,7 +29,7 @@ function AuthenticatedContent({
   settings 
 }: { 
   user: any; 
-  signOut: () => void; 
+  signOut?: (data?: any) => void; 
   onAuthSuccess: (credentials: AWSCredentials, accessToken: string) => void;
   settings: AppSettings;
 }) {
@@ -102,7 +102,7 @@ function AuthenticatedContent({
     <div style={{ textAlign: 'center', padding: '20px' }}>
       <p>{isProcessing ? 'Configuring session...' : 'Authenticated'}</p>
       <button
-        onClick={signOut}
+        onClick={() => signOut?.()}
         style={{
           marginTop: '10px',
           padding: '8px 16px',

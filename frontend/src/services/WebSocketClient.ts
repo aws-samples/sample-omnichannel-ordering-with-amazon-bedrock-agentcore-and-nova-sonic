@@ -52,7 +52,7 @@ export class WebSocketClient {
 
     // Construct the base URL using the correct hostname format
     // Must use bedrock-agentcore.{region}.amazonaws.com, NOT the runtime-specific hostname
-    const baseUrl = `wss://bedrock-agentcore.${region}.amazonaws.com/runtimes/${runtimeArn}/ws?qualifier=DEFAULT&voice_id=matthew`;
+    const baseUrl = `wss://bedrock-agentcore.${region}.amazonaws.com/runtimes/${runtimeArn}/ws?qualifier=DEFAULT&voice_id=tiffany`;
 
     // Convert wss:// to https:// for signing
     const httpsUrl = baseUrl.replace('wss://', 'https://');
