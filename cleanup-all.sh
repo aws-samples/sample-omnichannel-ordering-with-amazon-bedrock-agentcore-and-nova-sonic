@@ -34,14 +34,16 @@ NC='\033[0m' # No Color
 
 # Configuration
 OUTPUTS_DIR="cdk-outputs"
+STATE_FILE=".deployment-state.json"
 SKIP_FRONTEND=false
 SKIP_SYNTHETIC_DATA=false
 SKIP_RUNTIME=false
 SKIP_GATEWAY=false
 SKIP_BACKEND_INFRA=false
-IGNORE_MISSING=false
+IGNORE_MISSING=true
 FORCE=false
-CONTINUE_ON_ERROR=false
+CONTINUE_ON_ERROR=true
+DRY_RUN=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -73,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --force)
       FORCE=true
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=true
       shift
       ;;
     --help)
@@ -138,6 +144,11 @@ confirm_cleanup() {
 
 # Start cleanup
 print_section "QSR Ordering System - Full Cleanup"
+
+if [ "$DRY_RUN" = true ]; then
+  print_warning "DRY RUN MODE - No resources will be deleted"
+  echo ""
+fi
 
 # Show confirmation prompt
 confirm_cleanup
@@ -311,71 +322,75 @@ else
 fi
 
 ################################################################################
-# Step 4: Cleanup AgentCore Gateway (Python boto3)
+# Step 4: Cleanup AgentCore Gateway (CDK)
 ################################################################################
 
 if [ "$SKIP_GATEWAY" = false ]; then
-  print_section "Step 4: Cleaning up AgentCore Gateway (Python boto3)"
+  print_section "Step 4: Cleaning up AgentCore Gateway (CDK)"
   
-  # Check if gateway outputs exist
-  GATEWAY_OUTPUT_FILE="$OUTPUTS_DIR/agentcore-gateway.json"
-  if [ -f "$GATEWAY_OUTPUT_FILE" ]; then
-    GATEWAY_ID=$(cat "$GATEWAY_OUTPUT_FILE" | \
-      python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('gateway_id', ''))" 2>/dev/null)
+  cd backend/agentcore-gateway/cdk
+  
+  print_info "Destroying AgentCore Gateway stack..."
+  
+  # Check if Gateway stack exists before attempting deletion
+  print_info "Checking if QSR-AgentCoreGatewayStack exists..."
+  GATEWAY_STACK_EXISTS=$(aws cloudformation describe-stacks \
+    --stack-name QSR-AgentCoreGatewayStack \
+    --region us-east-1 \
+    --query 'Stacks[0].StackName' \
+    --output text 2>/dev/null || echo "")
+  
+  if [ -n "$GATEWAY_STACK_EXISTS" ]; then
+    print_info "Gateway stack found, destroying..."
+    print_info "This will delete Gateway, Targets, and IAM service role..."
     
-    if [ -n "$GATEWAY_ID" ]; then
-      print_info "Found Gateway ID: $GATEWAY_ID"
-      
-      cd backend/agentcore-gateway
-      
-      print_info "Installing Python dependencies..."
-      pip3 install -r scripts/requirements.txt --break-system-packages > /dev/null 2>&1
-      
-      print_info "Deleting AgentCore Gateway..."
-      
-      DELETE_ARGS="--output-file $(pwd)/../../$GATEWAY_OUTPUT_FILE"
-      if [ "$FORCE" = true ]; then
-        DELETE_ARGS="$DELETE_ARGS --force"
-      fi
-      
-      python3 scripts/delete-gateway.py $DELETE_ARGS
-      
-      if [ $? -eq 0 ]; then
-        print_success "AgentCore Gateway cleaned up successfully"
-      else
-        print_error "AgentCore Gateway cleanup failed"
-        if [ "$CONTINUE_ON_ERROR" = false ]; then
-          cd ../..
-          exit 1
-        fi
-        OVERALL_SUCCESS=false
-      fi
-      
-      cd ../..
-    else
-      print_warning "Could not extract Gateway ID from outputs"
-      if [ "$IGNORE_MISSING" = true ]; then
-        print_info "Continuing due to --ignore-missing-resources flag"
-      else
-        print_error "Gateway cleanup failed"
-        if [ "$CONTINUE_ON_ERROR" = false ]; then
-          exit 1
-        fi
-        OVERALL_SUCCESS=false
-      fi
+    # Get API Gateway ID for context
+    API_GATEWAY_ID=$(cat "../../../$OUTPUTS_DIR/backend-infrastructure.json" 2>/dev/null | \
+      jq -r '.["QSR-ApiGatewayStack"].ApiGatewayId // empty')
+    
+    if [ -z "$API_GATEWAY_ID" ]; then
+      print_warning "Could not find API Gateway ID, attempting destroy without context..."
+      API_GATEWAY_ID="dummy"
     fi
-  else
-    print_warning "Gateway outputs not found"
-    if [ "$IGNORE_MISSING" = true ]; then
-      print_info "Continuing due to --ignore-missing-resources flag"
+    
+    if [ "$FORCE" = true ]; then
+      cdk destroy --context apiGatewayId=$API_GATEWAY_ID --force
     else
-      print_error "Cannot cleanup gateway without outputs file"
+      cdk destroy --context apiGatewayId=$API_GATEWAY_ID
+    fi
+    
+    if [ $? -eq 0 ]; then
+      print_success "Gateway stack destroyed successfully"
+      
+      # Wait for deletion to complete
+      print_info "Waiting for Gateway stack deletion to complete..."
+      aws cloudformation wait stack-delete-complete \
+        --stack-name QSR-AgentCoreGatewayStack \
+        --region us-east-1 2>/dev/null || true
+      
+      # Remove output file
+      if [ -f "../../../$OUTPUTS_DIR/agentcore-gateway.json" ]; then
+        rm "../../../$OUTPUTS_DIR/agentcore-gateway.json"
+        print_info "Removed gateway output file"
+      fi
+      
+      print_success "AgentCore Gateway cleaned up successfully"
+    else
+      print_error "Gateway stack destruction failed"
       if [ "$CONTINUE_ON_ERROR" = false ]; then
+        cd ../../..
         exit 1
       fi
       OVERALL_SUCCESS=false
     fi
+  else
+    print_info "Gateway stack does not exist, skipping"
+    if [ "$IGNORE_MISSING" = true ]; then
+      print_info "Continuing due to missing stack"
+    fi
   fi
+  
+  cd ../../..
 else
   print_warning "Skipping AgentCore Gateway cleanup"
 fi
@@ -433,20 +448,32 @@ fi
 
 print_section "Cleanup Complete!"
 
+# Remove state file
+if [ "$DRY_RUN" = false ] && [ -f "$STATE_FILE" ]; then
+  rm "$STATE_FILE"
+  print_info "Removed deployment state file"
+fi
+
 # Remove outputs directory if empty
 if [ -d "$OUTPUTS_DIR" ]; then
   if [ -z "$(ls -A $OUTPUTS_DIR)" ]; then
-    rmdir "$OUTPUTS_DIR"
-    print_info "Removed empty outputs directory"
+    if [ "$DRY_RUN" = false ]; then
+      rmdir "$OUTPUTS_DIR"
+      print_info "Removed empty outputs directory"
+    fi
   else
     print_warning "Outputs directory still contains files"
   fi
 fi
 
-if [ "$OVERALL_SUCCESS" = true ]; then
+if [ "$DRY_RUN" = true ]; then
+  print_warning "DRY RUN completed - no resources were deleted"
+  echo ""
+  print_info "Run without --dry-run to actually delete resources"
+elif [ "$OVERALL_SUCCESS" = true ]; then
   print_success "All resources cleaned up successfully"
   echo ""
-  print_info "To redeploy, run: ./deploy-all.sh"
+  print_info "To redeploy, run: ./deploy-all.sh --user-email your@email.com --user-name \"Your Name\""
 else
   print_warning "Some resources may not have been cleaned up. Check the errors above."
   echo ""

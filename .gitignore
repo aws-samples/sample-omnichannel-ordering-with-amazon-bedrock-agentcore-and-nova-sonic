@@ -59,6 +59,9 @@ samconfig.toml
 # CDK deployment outputs
 cdk-outputs/
 
+# Deployment state (personal deployments)
+.deployment-state.json
+
 # OS
 Thumbs.db
 samples/
