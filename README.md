@@ -97,14 +97,7 @@ A CDK stack creates an AWS Amplify App for hosting the React frontend. After the
 # 2. Deploy everything (IMPORTANT: Use a VALID email address)
 ./deploy-all.sh --user-email your-valid-email@example.com --user-name "Your Name"
 
-# 3. Check status
-./status.sh
-
-# 4. Test the system
-cd backend/agentcore-runtime/test-client
-python3 client-cognito-sigv4.py --username AppUser --password <your-password>
-
-# 5. Cleanup when done
+# 3. Cleanup when done
 ./cleanup-all.sh
 ```
 
