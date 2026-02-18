@@ -118,21 +118,27 @@ We recommend creating a [Budget](https://console.aws.amazon.com/billing/home#/bu
 
 ### Sample Cost Table
 
-The following estimates assume 1,000 voice orders per month with 5 restaurant locations in US East (N. Virginia).
+The following estimates assume 1,000 voice orders per month with 5 restaurant locations in US East (N. Virginia). Estimates are based on observed token usage from real agent interactions and do not account for AWS Free Tier.
 
-| AWS Service | Dimensions | Pricing Reference |
-|-------------|------------|-------------------|
-| [Amazon Bedrock AgentCore Runtime](https://aws.amazon.com/bedrock/agentcore/pricing/) | Consumption-based: vCPU-seconds + GB-seconds per session | [AgentCore Pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) |
-| [Amazon Bedrock AgentCore Gateway](https://aws.amazon.com/bedrock/agentcore/pricing/) | Per Search API call + per InvokeTool API call | [AgentCore Pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) |
-| [Amazon Bedrock (Nova 2 Sonic)](https://aws.amazon.com/nova/pricing/) | Speech: $0.003/1K input, $0.012/1K output tokens. Text (tool calls): $0.00033/1K input, $0.00275/1K output tokens | [Nova Pricing](https://aws.amazon.com/nova/pricing/) |
-| [AWS Lambda](https://aws.amazon.com/lambda/pricing/) | 8,000 invocations/month, 512MB, ~1s avg duration | [Lambda Pricing](https://aws.amazon.com/lambda/pricing/) |
-| [Amazon API Gateway](https://aws.amazon.com/api-gateway/pricing/) | REST API, ~8,000 calls/month | [API Gateway Pricing](https://aws.amazon.com/api-gateway/pricing/) |
-| [Amazon DynamoDB](https://aws.amazon.com/dynamodb/pricing/) | 5 tables, on-demand, ~10K reads + 5K writes/month | [DynamoDB Pricing](https://aws.amazon.com/dynamodb/pricing/) |
-| [AWS Location Services](https://aws.amazon.com/location/pricing/) | ~1,000 geocoding + 500 route calculations/month | [Location Pricing](https://aws.amazon.com/location/pricing/) |
-| [Amazon Cognito](https://aws.amazon.com/cognito/pricing/) | Up to 10,000 MAUs in free tier | [Cognito Pricing](https://aws.amazon.com/cognito/pricing/) |
-| [AWS Amplify](https://aws.amazon.com/amplify/pricing/) | Hosting: 5GB storage, 15GB bandwidth/month | [Amplify Pricing](https://aws.amazon.com/amplify/pricing/) |
+| AWS Service | Dimensions | Monthly Cost |
+|-------------|------------|-------------|
+| [Amazon Bedrock (Nova 2 Sonic)](https://aws.amazon.com/nova/pricing/) | ~680 input + ~5,083 output speech tokens/session, ~7,438 input + ~1,260 output text tokens/session | $68.96 |
+| [Amazon Bedrock AgentCore Runtime](https://aws.amazon.com/bedrock/agentcore/pricing/) | 1,000 sessions, ~5 min each, ~30% active CPU, 1 vCPU, 512MB memory | $2.63 |
+| [Amazon Bedrock AgentCore Gateway](https://aws.amazon.com/bedrock/agentcore/pricing/) | 1,000 search calls + 29,000 tool invocations, 8 tools indexed | $0.17 |
+| [Amazon Cognito](https://aws.amazon.com/cognito/pricing/) | 1,000 MAUs at $0.0055/MAU | $5.50 |
+| [AWS Lambda](https://aws.amazon.com/lambda/pricing/) | 29,000 invocations, 512MB, ~1s avg duration | $0.25 |
+| [Amazon API Gateway](https://aws.amazon.com/api-gateway/pricing/) | 29,000 REST API calls | $0.10 |
+| [Amazon DynamoDB](https://aws.amazon.com/dynamodb/pricing/) | 5 tables, on-demand, ~29K reads + ~5K writes | $0.01 |
+| [AWS Location Services](https://aws.amazon.com/location/pricing/) | ~1,000 geocoding + ~500 route calculations | $0.50 |
+| [AWS Amplify](https://aws.amazon.com/amplify/pricing/) | Hosting: 5GB storage, 15GB bandwidth | $0.50 |
+| | **Estimated Total** | **~$78.62** |
 
-**Note**: AgentCore Runtime and Gateway use consumption-based pricing (you pay only for actual compute and API calls). Refer to the [AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) for detailed examples and calculators.
+**Notes**:
+- Costs do not include AWS Free Tier benefits. Actual costs may be lower if your account qualifies.
+- Nova 2 Sonic output speech tokens are the dominant cost driver (~88% of total).
+- Token counts are based on observed metrics from real ordering conversations with tool calls.
+- AgentCore Runtime uses consumption-based pricing — you pay only for active CPU and memory, not I/O wait time.
+- Costs scale linearly with usage. For 10,000 orders/month, estimated cost is ~$786.
 
 ## Prerequisites
 
