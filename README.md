@@ -3,7 +3,7 @@
 ## Table of Contents
 - 📋 [Solution Overview](#solution-overview)
 - 🏛️ [Architecture Overview](#architecture-overview)
-- � [Quick Start](#quick-start)
+- ⚡ [Quick Start](#quick-start)
 - 💰 [Cost](#cost)
 - ✅ [Prerequisites](#prerequisites)
 - 🚀 [Deployment Steps](#deployment-steps)
