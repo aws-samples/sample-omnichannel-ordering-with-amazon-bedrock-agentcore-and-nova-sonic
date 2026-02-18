@@ -288,150 +288,6 @@ else
 fi
 
 ################################################################################
-# Password Setup for Test User
-################################################################################
-
-FINAL_PASSWORD="<your-password>"
-
-# Only prompt for password change if we just deployed backend (new deployment or have user info)
-if [ -n "$USER_EMAIL" ] && [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-  print_section "Password Setup for Test User"
-
-  # Extract CLIENT_ID and REGION
-  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
-  
-  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region" "us-east-1")
-
-  echo ""
-  print_info "The test user 'AppUser' was created with a temporary password sent to: $USER_EMAIL"
-  print_info "This temporary password must be changed on first login."
-  echo ""
-  print_info "You can change it now to get ready-to-use test commands,"
-  print_info "or change it later when you first use a test client."
-  echo ""
-
-  read -p "Would you like to change the password now? (yes/no): " CHANGE_PASSWORD_NOW
-
-  if [[ "$CHANGE_PASSWORD_NOW" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    echo ""
-    print_info "Changing password for AppUser..."
-    echo ""
-    
-    # Allow up to 3 attempts
-    PASSWORD_CHANGED=false
-    for attempt in 1 2 3; do
-      if [ $attempt -gt 1 ]; then
-        echo ""
-        print_warning "Attempt $attempt of 3"
-      fi
-      
-      read -sp "Enter the temporary password from email: " TEMP_PASSWORD
-      echo ""
-      read -sp "Enter new permanent password: " NEW_PASSWORD
-      echo ""
-      read -sp "Confirm new password: " NEW_PASSWORD_CONFIRM
-      echo ""
-      
-      if [ "$NEW_PASSWORD" != "$NEW_PASSWORD_CONFIRM" ]; then
-        print_error "Passwords do not match."
-        if [ $attempt -lt 3 ]; then
-          read -p "Try again? (yes/no): " retry
-          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-            break
-          fi
-        fi
-        continue
-      fi
-      
-      print_info "Changing password..."
-      
-      # Authenticate with timeout
-      AUTH_RESPONSE=$(timeout 10 aws cognito-idp initiate-auth \
-        --auth-flow USER_PASSWORD_AUTH \
-        --client-id "$CLIENT_ID" \
-        --auth-parameters USERNAME=AppUser,PASSWORD="$TEMP_PASSWORD" \
-        --region "$REGION" 2>&1)
-      
-      AUTH_EXIT_CODE=$?
-      
-      if [ $AUTH_EXIT_CODE -eq 124 ]; then
-        print_error "Authentication timed out. Check your network connection."
-        if [ $attempt -lt 3 ]; then
-          read -p "Try again? (yes/no): " retry
-          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-            break
-          fi
-        fi
-        continue
-      fi
-      
-      if echo "$AUTH_RESPONSE" | grep -q "NotAuthorizedException"; then
-        print_error "Incorrect temporary password."
-        if [ $attempt -lt 3 ]; then
-          read -p "Try again? (yes/no): " retry
-          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-            break
-          fi
-        fi
-        continue
-      fi
-      
-      if echo "$AUTH_RESPONSE" | grep -q "ChallengeName"; then
-        SESSION=$(echo "$AUTH_RESPONSE" | json_stdin "Session" 2>/dev/null)
-        
-        if [ -z "$SESSION" ]; then
-          print_error "Failed to extract session token."
-          break
-        fi
-        
-        # Respond to challenge with timeout
-        CHALLENGE_RESPONSE=$(timeout 10 aws cognito-idp respond-to-auth-challenge \
-          --client-id "$CLIENT_ID" \
-          --challenge-name NEW_PASSWORD_REQUIRED \
-          --session "$SESSION" \
-          --challenge-responses USERNAME=AppUser,NEW_PASSWORD="$NEW_PASSWORD" \
-          --region "$REGION" 2>&1)
-        
-        CHALLENGE_EXIT_CODE=$?
-        
-        if [ $CHALLENGE_EXIT_CODE -eq 124 ]; then
-          print_error "Password change timed out."
-          break
-        fi
-        
-        if [ $CHALLENGE_EXIT_CODE -eq 0 ]; then
-          print_success "Password changed successfully!"
-          FINAL_PASSWORD="$NEW_PASSWORD"
-          PASSWORD_CHANGED=true
-          break
-        else
-          print_error "Failed to change password: $(echo "$CHALLENGE_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4)"
-          if [ $attempt -lt 3 ]; then
-            read -p "Try again? (yes/no): " retry
-            if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-              break
-            fi
-          fi
-        fi
-      else
-        print_error "Unexpected authentication response."
-        echo "$AUTH_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4
-        break
-      fi
-    done
-    
-    if [ "$PASSWORD_CHANGED" = false ]; then
-      print_warning "Password not changed. You'll need to change it on first login."
-      FINAL_PASSWORD="<temporary-password-from-email>"
-    fi
-  else
-    print_info "Skipping password change. You will need to change it on first login."
-    FINAL_PASSWORD="<temporary-password-from-email>"
-  fi
-  echo ""
-fi
-
-################################################################################
 # Synthetic Data (Optional)
 ################################################################################
 
@@ -557,6 +413,162 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
 fi
 
 ################################################################################
+# Password Setup for Test User (last interactive step)
+################################################################################
+
+FINAL_PASSWORD="<your-password>"
+
+# Only prompt for password change if not already done and backend outputs exist
+PASSWORD_ALREADY_CHANGED=$(get_state_data "backend-infrastructure" "password_changed")
+
+if [ "$PASSWORD_ALREADY_CHANGED" = "true" ]; then
+  print_section "Password Setup"
+  print_success "Password was already changed in a previous run"
+  FINAL_PASSWORD="<your-password>"
+elif [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
+  print_section "Password Setup for Test User"
+
+  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
+  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region" "us-east-1")
+  APP_USER_EMAIL=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "AppUserEmail")
+  
+  DISPLAY_EMAIL="${APP_USER_EMAIL:-${USER_EMAIL:-your email}}"
+
+  echo ""
+  print_info "All infrastructure is deployed. One last step:"
+  print_info "The test user 'AppUser' was created with a temporary password sent to: $DISPLAY_EMAIL"
+  print_info "This temporary password must be changed before you can use the system."
+  echo ""
+
+  if read -t 60 -p "Would you like to change the password now? (yes/no) [timeout in 60s → skip]: " CHANGE_PASSWORD_NOW; then
+    echo ""
+  else
+    echo ""
+    print_warning "No response — skipping password change."
+    CHANGE_PASSWORD_NOW="no"
+  fi
+
+  if [[ "$CHANGE_PASSWORD_NOW" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    echo ""
+    print_info "Changing password for AppUser..."
+    echo ""
+    
+    set +e
+    
+    PASSWORD_CHANGED=false
+    for attempt in 1 2 3; do
+      if [ $attempt -gt 1 ]; then
+        echo ""
+        print_warning "Attempt $attempt of 3"
+      fi
+      
+      read -sp "Enter the temporary password from email: " TEMP_PASSWORD
+      echo ""
+      read -sp "Enter new permanent password: " NEW_PASSWORD
+      echo ""
+      read -sp "Confirm new password: " NEW_PASSWORD_CONFIRM
+      echo ""
+      
+      if [ "$NEW_PASSWORD" != "$NEW_PASSWORD_CONFIRM" ]; then
+        print_error "Passwords do not match."
+        if [ $attempt -lt 3 ]; then
+          read -p "Try again? (yes/no): " retry
+          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then break; fi
+        fi
+        continue
+      fi
+      
+      print_info "Changing password..."
+      
+      AUTH_RESPONSE=$(timeout 10 aws cognito-idp initiate-auth \
+        --auth-flow USER_PASSWORD_AUTH \
+        --client-id "$CLIENT_ID" \
+        --auth-parameters USERNAME=AppUser,PASSWORD="$TEMP_PASSWORD" \
+        --region "$REGION" 2>&1)
+      
+      AUTH_EXIT_CODE=$?
+      
+      if [ $AUTH_EXIT_CODE -eq 124 ]; then
+        print_error "Authentication timed out. Check your network connection."
+        if [ $attempt -lt 3 ]; then
+          read -p "Try again? (yes/no): " retry
+          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then break; fi
+        fi
+        continue
+      fi
+      
+      if echo "$AUTH_RESPONSE" | grep -q "NotAuthorizedException"; then
+        print_error "Incorrect temporary password."
+        if [ $attempt -lt 3 ]; then
+          read -p "Try again? (yes/no): " retry
+          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then break; fi
+        fi
+        continue
+      fi
+      
+      if echo "$AUTH_RESPONSE" | grep -q "ChallengeName"; then
+        SESSION=$(echo "$AUTH_RESPONSE" | json_stdin "Session" 2>/dev/null)
+        
+        if [ -z "$SESSION" ]; then
+          print_error "Failed to extract session token."
+          break
+        fi
+        
+        CHALLENGE_RESPONSE=$(timeout 10 aws cognito-idp respond-to-auth-challenge \
+          --client-id "$CLIENT_ID" \
+          --challenge-name NEW_PASSWORD_REQUIRED \
+          --session "$SESSION" \
+          --challenge-responses USERNAME=AppUser,NEW_PASSWORD="$NEW_PASSWORD" \
+          --region "$REGION" 2>&1)
+        
+        CHALLENGE_EXIT_CODE=$?
+        
+        if [ $CHALLENGE_EXIT_CODE -eq 124 ]; then
+          print_error "Password change timed out."
+          break
+        fi
+        
+        if [ $CHALLENGE_EXIT_CODE -eq 0 ]; then
+          print_success "Password changed successfully!"
+          FINAL_PASSWORD="$NEW_PASSWORD"
+          PASSWORD_CHANGED=true
+          update_state "backend-infrastructure" true '{"password_changed": true}'
+          break
+        else
+          print_error "Failed to change password: $(echo "$CHALLENGE_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4)"
+          if [ $attempt -lt 3 ]; then
+            read -p "Try again? (yes/no): " retry
+            if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then break; fi
+          fi
+        fi
+      else
+        if echo "$AUTH_RESPONSE" | grep -q "AuthenticationResult"; then
+          print_success "Password already changed — authentication successful!"
+          FINAL_PASSWORD="$TEMP_PASSWORD"
+          PASSWORD_CHANGED=true
+          update_state "backend-infrastructure" true '{"password_changed": true}'
+          break
+        fi
+        print_error "Unexpected authentication response."
+        echo "$AUTH_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4
+        break
+      fi
+    done
+    
+    set -e
+    
+    if [ "$PASSWORD_CHANGED" = false ]; then
+      print_warning "Password not changed. You'll need to change it on first login."
+      FINAL_PASSWORD="<temporary-password-from-email>"
+    fi
+  else
+    print_info "Skipping password change. You will need to change it on first login."
+    FINAL_PASSWORD="<temporary-password-from-email>"
+  fi
+  echo ""
+fi
+
+################################################################################
 # Test Commands - Ready to Copy and Paste
 ################################################################################
 
@@ -656,6 +668,24 @@ echo ""
 print_section "Deployment Complete!"
 print_success "All components deployed successfully"
 echo ""
+
+# Show Amplify URL prominently if frontend was deployed
+if [ -f "$OUTPUTS_DIR/frontend.json" ]; then
+  AMPLIFY_URL=$(json_val "$OUTPUTS_DIR/frontend.json" "QSR-FrontendStack" "AmplifyAppUrl")
+  if [ -n "$AMPLIFY_URL" ]; then
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  🌐 Frontend URL: $AMPLIFY_URL${NC}"
+    echo -e "${GREEN}  👤 Username: AppUser${NC}"
+    if [ "$FINAL_PASSWORD" != "<your-password>" ] && [ "$FINAL_PASSWORD" != "<temporary-password-from-email>" ]; then
+      echo -e "${GREEN}  🔑 Password: (the password you just set)${NC}"
+    else
+      echo -e "${GREEN}  🔑 Password: (check your email for the temporary password)${NC}"
+    fi
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+  fi
+fi
+
 print_info "State saved to: $STATE_FILE"
 print_info "Outputs saved to: $OUTPUTS_DIR/"
 echo ""
