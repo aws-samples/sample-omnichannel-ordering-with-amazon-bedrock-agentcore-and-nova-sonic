@@ -4,14 +4,17 @@
 # Deployment State Manager
 # 
 # Tracks deployment state for idempotent operations
+# Uses Node.js for JSON manipulation (no Python dependency)
 ################################################################################
 
 STATE_FILE=".deployment-state.json"
+# Resolve to absolute path so it works from any subdirectory
+STATE_FILE_ABS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$STATE_FILE"
 
 # Initialize state file if it doesn't exist
 init_state() {
-  if [ ! -f "$STATE_FILE" ]; then
-    cat > "$STATE_FILE" <<EOF
+  if [ ! -f "$STATE_FILE_ABS" ]; then
+    cat > "$STATE_FILE_ABS" <<EOF
 {
   "version": "1.0",
   "last_updated": "",
@@ -61,23 +64,16 @@ update_state() {
   
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   
-  python3 -c "
-import json
-import sys
-
-with open('$STATE_FILE', 'r') as f:
-    state = json.load(f)
-
-state['last_updated'] = '$timestamp'
-state['components']['$component']['deployed'] = ('$deployed'.lower() == 'true')
-state['components']['$component']['timestamp'] = '$timestamp'
-
-if '$extra_data':
-    extra = json.loads('$extra_data')
-    state['components']['$component'].update(extra)
-
-with open('$STATE_FILE', 'w') as f:
-    json.dump(state, f, indent=2)
+  node -e "
+const fs = require('fs');
+const state = JSON.parse(fs.readFileSync('$STATE_FILE_ABS', 'utf8'));
+state.last_updated = '$timestamp';
+state.components['$component'].deployed = ('$deployed'.toLowerCase() === 'true');
+state.components['$component'].timestamp = '$timestamp';
+if ('$extra_data') {
+  Object.assign(state.components['$component'], JSON.parse('$extra_data'));
+}
+fs.writeFileSync('$STATE_FILE_ABS', JSON.stringify(state, null, 2));
 "
 }
 
@@ -85,19 +81,16 @@ with open('$STATE_FILE', 'w') as f:
 is_deployed() {
   local component=$1
   
-  if [ ! -f "$STATE_FILE" ]; then
+  if [ ! -f "$STATE_FILE_ABS" ]; then
     echo "false"
     return
   fi
   
-  python3 -c "
-import json
-try:
-    with open('$STATE_FILE', 'r') as f:
-        state = json.load(f)
-    print('true' if state['components']['$component']['deployed'] else 'false')
-except:
-    print('false')
+  node -e "
+try {
+  const state = JSON.parse(require('fs').readFileSync('$STATE_FILE_ABS', 'utf8'));
+  console.log(state.components['$component'].deployed ? 'true' : 'false');
+} catch(e) { console.log('false'); }
 "
 }
 
@@ -106,19 +99,16 @@ get_state_data() {
   local component=$1
   local key=$2
   
-  if [ ! -f "$STATE_FILE" ]; then
+  if [ ! -f "$STATE_FILE_ABS" ]; then
     echo ""
     return
   fi
   
-  python3 -c "
-import json
-try:
-    with open('$STATE_FILE', 'r') as f:
-        state = json.load(f)
-    print(state['components']['$component'].get('$key', ''))
-except:
-    print('')
+  node -e "
+try {
+  const state = JSON.parse(require('fs').readFileSync('$STATE_FILE_ABS', 'utf8'));
+  console.log(state.components['$component']['$key'] || '');
+} catch(e) { console.log(''); }
 "
 }
 
@@ -134,25 +124,9 @@ stack_exists() {
     --output text 2>/dev/null || echo ""
 }
 
-# Check if AgentCore Gateway exists
-gateway_exists() {
-  local gateway_id=$1
-  
-  if [ -z "$gateway_id" ]; then
-    echo "false"
-    return
-  fi
-  
-  aws bedrock-agent-runtime describe-agent-gateway \
-    --gateway-id "$gateway_id" \
-    --query 'gateway.gatewayId' \
-    --output text 2>/dev/null || echo ""
-}
-
 # Export functions
 export -f init_state
 export -f update_state
 export -f is_deployed
 export -f get_state_data
 export -f stack_exists
-export -f gateway_exists

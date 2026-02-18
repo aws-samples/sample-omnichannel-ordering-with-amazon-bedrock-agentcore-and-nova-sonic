@@ -77,6 +77,12 @@ print_info() {
   echo -e "${BLUE}ℹ️  $1${NC}"
 }
 
+# Helper: extract JSON value from file - json_val <file> <stack> <key> [default]
+json_val() {
+  local file=$1 stack=$2 key=$3 default=${4:-}
+  node -e "const d=JSON.parse(require('fs').readFileSync('$file','utf8')); console.log((d['$stack']||{})['$key']||'$default')"
+}
+
 # Validate required parameters
 if [ -z "$PASSWORD" ]; then
   print_error "Password is required"
@@ -104,26 +110,19 @@ echo ""
 
 # Backend Infrastructure outputs
 if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-  USER_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolId', ''))")
+  USER_POOL_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolId")
   
-  CLIENT_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolClientId', ''))")
+  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
   
-  IDENTITY_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('IdentityPoolId', ''))")
+  IDENTITY_POOL_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "IdentityPoolId")
   
-  REGION=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('Region', ''))")
+  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region")
   
-  MAP_NAME=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-LocationStack', {}).get('MapName', ''))")
+  MAP_NAME=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-LocationStack" "MapName")
   
-  PLACE_INDEX_NAME=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-LocationStack', {}).get('PlaceIndexName', ''))")
+  PLACE_INDEX_NAME=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-LocationStack" "PlaceIndexName")
   
-  API_GATEWAY_URL=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-ApiGatewayStack', {}).get('ApiGatewayUrl', ''))")
+  API_GATEWAY_URL=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-ApiGatewayStack" "ApiGatewayUrl")
 else
   print_error "Backend infrastructure outputs not found"
   print_info "Please run ./deploy-all.sh first to deploy the backend infrastructure"
@@ -132,8 +131,7 @@ fi
 
 # AgentCore Runtime outputs
 if [ -f "$OUTPUTS_DIR/agentcore-runtime.json" ]; then
-  RUNTIME_ARN=$(cat "$OUTPUTS_DIR/agentcore-runtime.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('AgentCoreRuntimeStack', {}).get('AgentRuntimeArn', ''))")
+  RUNTIME_ARN=$(json_val "$OUTPUTS_DIR/agentcore-runtime.json" "AgentCoreRuntimeStack" "AgentRuntimeArn")
 else
   print_warning "AgentCore Runtime outputs not found"
   RUNTIME_ARN=""
@@ -141,8 +139,7 @@ fi
 
 # AgentCore Gateway outputs
 if [ -f "$OUTPUTS_DIR/agentcore-gateway.json" ]; then
-  GATEWAY_URL=$(cat "$OUTPUTS_DIR/agentcore-gateway.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('gateway_url', ''))")
+  GATEWAY_URL=$(json_val "$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayUrl")
 else
   print_warning "AgentCore Gateway outputs not found"
   GATEWAY_URL=""

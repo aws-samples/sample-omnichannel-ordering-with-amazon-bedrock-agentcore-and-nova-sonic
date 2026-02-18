@@ -1,14 +1,29 @@
-# Welcome to your CDK TypeScript project
+# Frontend CDK Stack
 
-This is a blank project for CDK development with TypeScript.
+Deploys an AWS Amplify App for hosting the QSR Voice Ordering frontend.
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+## What It Does
 
-## Useful commands
+- Creates an Amplify App (`qsr-ordering-frontend`)
+- Creates a `main` branch with manual deployment (no auto-build)
+- Outputs the Amplify App ID and URL
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+## Deploy
+
+```bash
+npm install
+cdk deploy
+```
+
+After the CDK stack is deployed, deploy the frontend code:
+
+```bash
+cd ..
+npm run deploy:amplify
+```
+
+## Destroy
+
+```bash
+cdk destroy
+```

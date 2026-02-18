@@ -92,6 +92,18 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
+# Helper: extract JSON value from file - json_val <file> <stack> <key> [default]
+json_val() {
+  local file=$1 stack=$2 key=$3 default=${4:-}
+  node -e "const d=JSON.parse(require('fs').readFileSync('$file','utf8')); console.log((d['$stack']||{})['$key']||'$default')"
+}
+
+# Helper: extract JSON value from stdin
+json_stdin() {
+  local key=$1 default=${2:-}
+  node -e "let b='';process.stdin.on('data',c=>b+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(b)['$key']||'$default')}catch(e){console.log('$default')}})"
+}
+
 # Run preflight checks
 if [ "$SKIP_PREFLIGHT" = false ]; then
   print_section "Running Preflight Checks"
@@ -187,8 +199,7 @@ if [ "$GATEWAY_DEPLOYED" = "true" ]; then
 fi
 
 if [ "$GATEWAY_DEPLOYED" = "false" ]; then
-  API_GATEWAY_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-ApiGatewayStack', {}).get('ApiGatewayId', ''))")
+  API_GATEWAY_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-ApiGatewayStack" "ApiGatewayId")
   
   if [ -z "$API_GATEWAY_ID" ]; then
     print_error "Backend API Gateway ID not found. Deploy backend infrastructure first."
@@ -207,10 +218,7 @@ if [ "$GATEWAY_DEPLOYED" = "false" ]; then
     --outputs-file "../../../$OUTPUTS_DIR/agentcore-gateway.json"
   
   # Extract Gateway ID from outputs
-  NEW_GATEWAY_ID=$(cat "../../../$OUTPUTS_DIR/agentcore-gateway.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); \
-    stack_data = data.get('QSR-AgentCoreGatewayStack', {}); \
-    print(stack_data.get('GatewayId', ''))")
+  NEW_GATEWAY_ID=$(json_val "../../../$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayId")
   
   if [ -n "$NEW_GATEWAY_ID" ]; then
     update_state "agentcore-gateway" true "{\"gateway_id\": \"$NEW_GATEWAY_ID\", \"stack\": \"QSR-AgentCoreGatewayStack\"}"
@@ -253,10 +261,7 @@ if [ "$RUNTIME_DEPLOYED" = "true" ]; then
 fi
 
 if [ "$RUNTIME_DEPLOYED" = "false" ]; then
-  GATEWAY_URL=$(cat "$OUTPUTS_DIR/agentcore-gateway.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); \
-    stack_data = data.get('QSR-AgentCoreGatewayStack', {}); \
-    print(stack_data.get('GatewayUrl', ''))")
+  GATEWAY_URL=$(json_val "$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayUrl")
   
   if [ -z "$GATEWAY_URL" ]; then
     print_error "Gateway URL not found. Deploy gateway first."
@@ -293,11 +298,9 @@ if [ -n "$USER_EMAIL" ] && [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; th
   print_section "Password Setup for Test User"
 
   # Extract CLIENT_ID and REGION
-  CLIENT_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolClientId', ''))")
+  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
   
-  REGION=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('Region', 'us-east-1'))")
+  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region" "us-east-1")
 
   echo ""
   print_info "The test user 'AppUser' was created with a temporary password sent to: $USER_EMAIL"
@@ -374,7 +377,7 @@ if [ -n "$USER_EMAIL" ] && [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; th
       fi
       
       if echo "$AUTH_RESPONSE" | grep -q "ChallengeName"; then
-        SESSION=$(echo "$AUTH_RESPONSE" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('Session', ''))" 2>/dev/null)
+        SESSION=$(echo "$AUTH_RESPONSE" | json_stdin "Session" 2>/dev/null)
         
         if [ -z "$SESSION" ]; then
           print_error "Failed to extract session token."
@@ -543,8 +546,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     print_info "Deploying frontend code to Amplify..."
     npm run deploy:amplify
     
-    AMPLIFY_URL=$(cat "../$OUTPUTS_DIR/frontend.json" | \
-      python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-FrontendStack', {}).get('AmplifyAppUrl', ''))")
+    AMPLIFY_URL=$(json_val "../$OUTPUTS_DIR/frontend.json" "QSR-FrontendStack" "AmplifyAppUrl")
     
     update_state "frontend" true "{\"url\": \"$AMPLIFY_URL\"}"
     print_success "Frontend deployed to Amplify"
@@ -562,34 +564,25 @@ print_section "Ready-to-Use Test Commands"
 
 # Extract values from deployment outputs
 if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-  USER_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolId', ''))")
+  USER_POOL_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolId")
   
-  CLIENT_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolClientId', ''))")
+  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
   
-  IDENTITY_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('IdentityPoolId', ''))")
+  IDENTITY_POOL_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "IdentityPoolId")
   
-  REGION=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('Region', 'us-east-1'))")
+  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region" "us-east-1")
   
-  API_GATEWAY_URL=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-ApiGatewayStack', {}).get('ApiGatewayUrl', ''))")
+  API_GATEWAY_URL=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-ApiGatewayStack" "ApiGatewayUrl")
 fi
 
 # Extract Runtime ARN
 if [ -f "$OUTPUTS_DIR/agentcore-runtime.json" ]; then
-  RUNTIME_ARN=$(cat "$OUTPUTS_DIR/agentcore-runtime.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('AgentCoreRuntimeStack', {}).get('AgentRuntimeArn', ''))")
+  RUNTIME_ARN=$(json_val "$OUTPUTS_DIR/agentcore-runtime.json" "AgentCoreRuntimeStack" "AgentRuntimeArn")
 fi
 
 # Extract Gateway URL (CDK format)
 if [ -f "$OUTPUTS_DIR/agentcore-gateway.json" ]; then
-  GATEWAY_URL=$(cat "$OUTPUTS_DIR/agentcore-gateway.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); \
-    stack_data = data.get('QSR-AgentCoreGatewayStack', {}); \
-    print(stack_data.get('GatewayUrl', ''))")
+  GATEWAY_URL=$(json_val "$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayUrl")
 fi
 
 echo ""

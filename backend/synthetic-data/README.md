@@ -123,8 +123,8 @@ The script will guide you through:
    - Example: `33.4127, -96.5837`
 
 2. **Business Name**
-   - Enter the business to search for
-   - Example: `Dunkin Donuts`, `McDonald's`, `Subway`
+   - Enter the restaurant or business to search for
+   - Example: `pizza`, `burgers`, `coffee shop`
 
 3. **Location Discovery**
    - Script queries AWS Geo Places API
@@ -177,24 +177,25 @@ Enter your current address or coordinates: 33.4127, -96.5837
   Step 2: Business Name
 ============================================================
 
-ℹ️  Examples: Dunkin Donuts, McDonald's, Subway, Starbucks
+ℹ️  Enter the name of a restaurant or business you want to search for
+ℹ️  Examples: pizza, burgers, coffee shop, sandwich, tacos
 
-Enter business name to search: Dunkin Donuts
+Enter restaurant or business name to search: pizza
 
 ============================================================
   Step 3: Location Discovery
 ============================================================
 
-ℹ️  Searching for 'Dunkin Donuts' within 60 miles...
+ℹ️  Searching for 'pizza' within 100 miles...
 ℹ️  This may take a moment...
 
 ✅ Found 15 locations
 
-  1. Dunkin' - McKinney
+  1. Pizza Place - McKinney
      123 Main St, McKinney, TX 75069
      Distance: 12.3 miles
 
-  2. Dunkin' - Plano
+  2. Pizza Kitchen - Plano
      456 Oak Ave, Plano, TX 75023
      Distance: 18.7 miles
 
@@ -273,7 +274,7 @@ Ready to ingest data into DynamoDB? (yes/no): yes
 
 ℹ️  You can now test the QSR ordering agent with realistic data
 ℹ️  Customer: Sergio Barraza (cust-qsrcogni)
-ℹ️  Locations: 15 Dunkin Donuts locations
+ℹ️  Locations: 15 locations
 ℹ️  Menu Items: 165 items
 ℹ️  Orders: 5 sample orders
 ```
@@ -327,11 +328,11 @@ Real locations from AWS Geo Places API:
 
 ```json
 {
-  "PK": "LOCATION#loc-dunkin-donuts-abc12345",
-  "locationId": "loc-dunkin-donuts-abc12345",
+  "PK": "LOCATION#loc-pizza-place-abc12345",
+  "locationId": "loc-pizza-place-abc12345",
   "placeId": "aws-geo-places-id",
-  "name": "Dunkin' - McKinney",
-  "businessName": "Dunkin Donuts",
+  "name": "Pizza Place - McKinney",
+  "businessName": "Pizza Place",
   "address": "123 Main St, McKinney, TX 75069",
   "street": "123 Main St",
   "city": "McKinney",
@@ -384,8 +385,8 @@ Same menu for all locations:
 
 ```json
 {
-  "PK": "LOCATION#loc-dunkin-donuts-abc12345#ITEM#burger-classic",
-  "locationId": "loc-dunkin-donuts-abc12345",
+  "PK": "LOCATION#loc-pizza-place-abc12345#ITEM#burger-classic",
+  "locationId": "loc-pizza-place-abc12345",
   "itemId": "burger-classic",
   "name": "Classic Burger",
   "description": "Quarter pound beef patty with lettuce, tomato, onions, pickles",
@@ -411,12 +412,12 @@ Sample order history (5 orders):
 {
   "PK": "CUSTOMER#cust-qsrcogni",
   "SK": "ORDER#order-abc123#1737892800",
-  "GSI1PK": "LOCATION#loc-dunkin-donuts-abc12345",
+  "GSI1PK": "LOCATION#loc-pizza-place-abc12345",
   "GSI1SK": "ORDER#1737892800",
   "customerId": "cust-qsrcogni",
   "orderId": "order-abc123",
-  "locationId": "loc-dunkin-donuts-abc12345",
-  "locationName": "Dunkin' - McKinney",
+  "locationId": "loc-pizza-place-abc12345",
+  "locationName": "Pizza Place - McKinney",
   "items": [
     {
       "itemId": "combo-burger",
@@ -452,7 +453,7 @@ Sample order history (5 orders):
 
 **Error**: No locations found
 - **Solution**: Try a different business name or location
-- **Tip**: Use well-known chain names (McDonald's, Starbucks, Dunkin Donuts)
+- **Tip**: Try common search terms like pizza, burgers, coffee, tacos, or sandwich
 - **Tip**: Ensure you're in an area with commercial establishments
 
 ### DynamoDB Errors

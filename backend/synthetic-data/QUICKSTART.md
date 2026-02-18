@@ -30,10 +30,10 @@ Follow the prompts to generate and ingest synthetic data.
 - **Coordinates**: `33.4127, -96.5837`
 
 ### Business Name
-- `Dunkin Donuts`
-- `McDonald's`
-- `Subway`
-- `Starbucks`
+- `pizza`
+- `burgers`
+- `coffee shop`
+- `tacos`
 
 ### Home Address
 - Choose "yes" to use same as search location

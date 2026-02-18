@@ -71,26 +71,23 @@ if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
   echo ""
   echo -e "${BLUE}Key Resources:${NC}"
   
-  API_URL=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-ApiGatewayStack', {}).get('ApiGatewayUrl', 'N/A'))" 2>/dev/null || echo "N/A")
+  API_URL=$(node -e "const d=JSON.parse(require('fs').readFileSync('$OUTPUTS_DIR/backend-infrastructure.json','utf8')); console.log((d['QSR-ApiGatewayStack']||{})['ApiGatewayUrl']||'N/A')" 2>/dev/null || echo "N/A")
   
-  USER_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolId', 'N/A'))" 2>/dev/null || echo "N/A")
+  USER_POOL_ID=$(node -e "const d=JSON.parse(require('fs').readFileSync('$OUTPUTS_DIR/backend-infrastructure.json','utf8')); console.log((d['QSR-CognitoStack']||{})['UserPoolId']||'N/A')" 2>/dev/null || echo "N/A")
   
   echo "  API Gateway URL: $API_URL"
   echo "  User Pool ID: $USER_POOL_ID"
 fi
 
 if [ -f "$OUTPUTS_DIR/agentcore-runtime.json" ]; then
-  RUNTIME_ARN=$(cat "$OUTPUTS_DIR/agentcore-runtime.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('AgentCoreRuntimeStack', {}).get('AgentRuntimeArn', 'N/A'))" 2>/dev/null || echo "N/A")
+  RUNTIME_ARN=$(node -e "const d=JSON.parse(require('fs').readFileSync('$OUTPUTS_DIR/agentcore-runtime.json','utf8')); console.log((d['AgentCoreRuntimeStack']||{})['AgentRuntimeArn']||'N/A')" 2>/dev/null || echo "N/A")
   
   echo "  Runtime ARN: $RUNTIME_ARN"
 fi
 
 # Last updated
 if [ -f "$STATE_FILE" ]; then
-  LAST_UPDATED=$(python3 -c "import json; data=json.load(open('$STATE_FILE')); print(data.get('last_updated', 'Unknown'))" 2>/dev/null || echo "Unknown")
+  LAST_UPDATED=$(node -e "const d=JSON.parse(require('fs').readFileSync('$STATE_FILE','utf8')); console.log(d.last_updated||'Unknown')" 2>/dev/null || echo "Unknown")
   echo ""
   echo -e "${BLUE}Last Updated:${NC} $LAST_UPDATED"
 fi

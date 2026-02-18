@@ -1,14 +1,37 @@
-# Welcome to your CDK TypeScript project
+# AgentCore Gateway CDK Stack
 
-This is a blank project for CDK development with TypeScript.
+Deploys an AgentCore Gateway as a CloudFormation stack using a Node.js Custom Resource Lambda.
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+## What It Does
 
-## Useful commands
+- Creates an IAM service role for the gateway
+- Fetches the OpenAPI schema from the backend API Gateway
+- Parses endpoints into MCP tool filters and overrides
+- Creates the AgentCore Gateway and target
+- Outputs Gateway URL, ID, ARN, and other deployment details
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+## Prerequisites
+
+- Backend Infrastructure deployed (`QSR-ApiGatewayStack`)
+- Node.js 20+ and npm
+- AWS CDK CLI
+- `esbuild` (installed automatically via `npm install`)
+
+## Deploy
+
+```bash
+npm install
+cdk deploy --context apiGatewayId=<your-api-gateway-id>
+```
+
+## Destroy
+
+```bash
+cdk destroy --context apiGatewayId=<your-api-gateway-id>
+```
+
+## Key Design Decisions
+
+- Uses `NodejsFunction` with esbuild bundling (no Docker required)
+- Bundles all `@aws-sdk` packages instead of using Lambda runtime versions, since `@aws-sdk/client-bedrock-agentcore-control` may not be available in the runtime yet
+- Custom Resource returns data via `cr.Provider` framework (not manual CF response)

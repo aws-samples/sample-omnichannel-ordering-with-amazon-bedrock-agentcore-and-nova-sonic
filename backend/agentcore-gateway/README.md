@@ -54,42 +54,32 @@ This project deploys an AWS Bedrock AgentCore Gateway that exposes a Backend API
 
 ## Quick Start
 
-### 1. Install Dependencies
+### Option 1: CDK Deployment (Recommended)
+
+The gateway is deployed via CDK as part of the main deployment script:
+
+```bash
+# From the project root
+./deploy-all.sh --user-email your-email@example.com --user-name "Your Name"
+```
+
+Or deploy the gateway CDK stack directly:
+
+```bash
+cd cdk
+npm install
+cdk deploy --context apiGatewayId=<your-api-gateway-id>
+```
+
+### Option 2: Python Scripts (Reference)
+
+The original Python deployment scripts are kept in `scripts/` for reference:
 
 ```bash
 cd backend/agentcore-gateway
 pip install -r scripts/requirements.txt
-```
-
-### 2. Configure Deployment
-
-```bash
-cp scripts/config.yaml.example scripts/config.yaml
-```
-
-Edit `scripts/config.yaml` with your API Gateway ID:
-
-```yaml
-backend:
-  api_gateway_id: hj65he2og8  # Your API Gateway ID
-  api_gateway_stage: prod
-```
-
-### 3. Deploy Gateway
-
-```bash
 python scripts/deploy-gateway.py --config scripts/config.yaml
 ```
-
-### 4. Get Gateway URL
-
-The deployment will output the Gateway URL:
-
-```
-✅ Gateway URL: https://qsr-ordering-gateway-xxxxx.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp
-```
-
-Provide this URL to the AgentCore Runtime for MCP client configuration.
 
 ## Testing the Gateway
 
@@ -159,10 +149,18 @@ python scripts/deploy-gateway.py \
 
 ## Cleanup
 
-To delete all resources:
+To delete the gateway and all associated resources:
 
 ```bash
-python scripts/delete-gateway.py --gateway-id <gateway-id>
+# Via CDK (recommended)
+cd cdk
+cdk destroy --context apiGatewayId=<your-api-gateway-id>
+```
+
+Or use the main cleanup script from the project root:
+
+```bash
+./cleanup-all.sh
 ```
 
 ## Documentation
@@ -170,9 +168,16 @@ python scripts/delete-gateway.py --gateway-id <gateway-id>
 - **[DEPLOYMENT.md](DEPLOYMENT.md)**: Detailed deployment guide
 - **[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md)**: Technical implementation details
 
-## Why Boto3 Instead of CDK?
+## Implementation
 
-This is a temporary workaround because AWS CDK/CloudFormation does not currently support API Gateway as a target type for AgentCore Gateway. When CDK support is available, this will be migrated to AWS CDK TypeScript.
+The gateway is deployed as a CDK stack with a Node.js Custom Resource Lambda that:
+- Creates an IAM service role for the gateway
+- Fetches the OpenAPI schema from API Gateway
+- Parses endpoints into MCP tool filters and overrides
+- Creates the AgentCore Gateway and target via the AWS SDK
+- Handles full lifecycle (Create/Update/Delete)
+
+The Python scripts in `scripts/` are kept as reference for the original boto3 implementation.
 
 ## Security
 
