@@ -154,14 +154,17 @@ def get_user_location() -> Optional[Tuple[float, float, str]]:
     Returns:
         Tuple of (latitude, longitude, address_string) or None
     """
-    print_info("You can provide either an address or coordinates")
+    print_info("Enter a city name, zip code, or full address to find nearby locations")
     print_info("Examples:")
-    print_info("  - Address: 123 Main St, Van Alstyne, TX 75495")
+    print_info("  - City: Dallas")
+    print_info("  - City, State: Dallas, Texas")
+    print_info("  - Zip code: 75495")
+    print_info("  - Full address: 123 Main St, Dallas, TX 75201")
     print_info("  - Coordinates: 33.4127, -96.5837")
     print()
     
     while True:
-        user_input = input(f"{Colors.CYAN}Enter your current address or coordinates: {Colors.NC}").strip()
+        user_input = input(f"{Colors.CYAN}Enter location (city, zip code, or address): {Colors.NC}").strip()
         
         if not user_input:
             print_warning("Input cannot be empty")
@@ -193,11 +196,12 @@ def get_business_name() -> str:
     Returns:
         Business name
     """
-    print_info("Examples: Dunkin Donuts, McDonald's, Subway, Starbucks")
+    print_info("Enter the name of a restaurant or business you want to search for")
+    print_info("Examples: pizza, burgers, coffee shop, sandwich, tacos")
     print()
     
     while True:
-        business_name = input(f"{Colors.CYAN}Enter business name to search: {Colors.NC}").strip()
+        business_name = input(f"{Colors.CYAN}Enter restaurant or business name to search: {Colors.NC}").strip()
         
         is_valid, error = validate_business_name(business_name)
         if is_valid:
@@ -224,7 +228,7 @@ def search_locations(
     Returns:
         List of found places
     """
-    print_info(f"Searching for '{business_name}' within 60 miles...")
+    print_info(f"Searching for '{business_name}' within 100 miles...")
     print_info("This may take a moment...")
     print()
     
@@ -232,7 +236,7 @@ def search_locations(
         latitude=latitude,
         longitude=longitude,
         business_name=business_name,
-        radius_miles=60,
+        radius_miles=100,
         max_results=20
     )
     

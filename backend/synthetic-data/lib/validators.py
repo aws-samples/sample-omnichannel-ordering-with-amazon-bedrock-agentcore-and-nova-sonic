@@ -107,7 +107,7 @@ def sanitize_location_id(place_id: str, business_name: str) -> str:
         business_name: Business name
         
     Returns:
-        Sanitized location ID (e.g., "loc-dunkin-donuts-12345")
+        Sanitized location ID (e.g., "loc-pizza-place-12345")
     """
     # Use last 8 chars of place_id as unique suffix
     suffix = place_id[-8:] if len(place_id) >= 8 else place_id

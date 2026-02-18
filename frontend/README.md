@@ -236,28 +236,29 @@ cd ..
 
 ## Deployment
 
-### AWS Amplify (Recommended)
+### Via deploy-all.sh (Recommended)
 
-1. Connect your repository to AWS Amplify
-2. Set build settings:
-   ```yaml
-   version: 1
-   frontend:
-     phases:
-       preBuild:
-         commands:
-           - cd frontend
-           - npm install
-           - npm run prebuild
-       build:
-         commands:
-           - npm run build
-     artifacts:
-       baseDirectory: frontend/dist
-       files:
-         - '**/*'
-   ```
-3. Deploy automatically on git push
+The frontend is deployed automatically as part of the main deployment:
+
+```bash
+./deploy-all.sh --user-email your-email@example.com --user-name "Your Name" --with-frontend
+```
+
+### Manual Deployment
+
+1. Deploy the Amplify CDK stack:
+```bash
+cd frontend/cdk
+npm install
+cdk deploy
+```
+
+2. Deploy the frontend code to Amplify:
+```bash
+cd frontend
+npm install
+npm run deploy:amplify
+```
 
 ### S3 + CloudFront
 

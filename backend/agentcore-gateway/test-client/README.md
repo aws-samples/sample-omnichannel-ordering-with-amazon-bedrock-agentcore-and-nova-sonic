@@ -38,7 +38,7 @@ Test basic connectivity to the gateway:
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --test-connection
 ```
 
@@ -48,7 +48,7 @@ List all tools exposed by the gateway:
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --list-tools
 ```
 
@@ -90,7 +90,7 @@ Call a specific tool with arguments:
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --tool-name get_menu \
   --tool-args '{}'
 ```
@@ -99,7 +99,7 @@ python test_gateway.py \
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --tool-name get_customer_profile \
   --tool-args '{"customer_id": "user123"}'
 ```
@@ -108,7 +108,7 @@ python test_gateway.py \
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --tool-name create_order \
   --tool-args '{
     "customer_id": "user123",
@@ -124,7 +124,7 @@ python test_gateway.py \
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --profile my-aws-profile \
   --list-tools
 ```
@@ -133,7 +133,7 @@ python test_gateway.py \
 
 ```bash
 python test_gateway.py \
-  --gateway-url https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp \
+  --gateway-url <your-gateway-url> \
   --region us-west-2 \
   --list-tools
 ```
@@ -287,7 +287,7 @@ python test_gateway.py --gateway-url <url> --list-tools > tools.txt
 
 ```bash
 #!/bin/bash
-GATEWAY_URL="https://qsr-ordering-gateway-zerokt4esf.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
+GATEWAY_URL="<your-gateway-url>"
 
 # Test connection
 if python test_gateway.py --gateway-url "$GATEWAY_URL" --test-connection; then

@@ -44,6 +44,76 @@ export class CognitoStack extends cdk.Stack {
       autoVerify: {
         email: true,
       },
+      userInvitation: {
+        emailSubject: '🎙️ QSR Voice Ordering — Your Account is Ready',
+        emailBody: `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="520" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <!-- Header -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:32px 40px;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">🎙️ 🍔 🍟 🍗 🥤 📍</div>
+              <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:600;">QSR Voice Ordering</h1>
+              <p style="color:#a0aec0;margin:6px 0 0;font-size:13px;">AI-Powered · Voice-First · Location-Aware</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 40px;">
+              <p style="color:#2d3748;font-size:15px;line-height:1.6;margin:0 0 20px;">
+                Hello <strong>{username}</strong>, welcome aboard!
+              </p>
+              <p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 24px;">
+                Your account has been created. Use the credentials below to sign in and start testing the voice ordering experience.
+              </p>
+              <!-- Credentials Box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:4px;">Username</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#1a202c;font-size:16px;font-weight:600;font-family:'Courier New',monospace;padding-bottom:16px;">{username}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#718096;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:4px;">Temporary Password</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#1a202c;font-size:16px;font-weight:600;font-family:'Courier New',monospace;">{####}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <!-- Notice -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 6px 6px 0;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:12px 16px;">
+                    <p style="color:#92400e;font-size:13px;margin:0;line-height:1.5;">
+                      ⚠️ Copy the password exactly as shown. You will be asked to set a new password on first sign-in.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#a0aec0;font-size:12px;margin:0;text-align:center;">
+                This is an automated message from the QSR Voice Ordering System.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+      },
       standardAttributes: {
         email: {
           required: true,

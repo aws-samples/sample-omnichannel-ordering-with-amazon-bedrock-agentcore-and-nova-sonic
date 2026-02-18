@@ -230,14 +230,9 @@ This creates:
 
 The Runtime Stack requires the AgentCore Gateway URL from Project 2. You can either:
 
-**Option A: Using environment variable**
-```bash
-export GATEWAY_URL=$(cat ../../../cdk-outputs/agentcore-gateway.json | python3 -c "import sys, json; print(json.load(sys.stdin)['gateway_url'])")
+**Option A: Using the deploy-all.sh script (recommended)**
 
-cdk deploy AgentCoreRuntimeStack \
-  --require-approval never \
-  --parameters AgentCoreRuntimeStack:AgentCoreGatewayUrl="$GATEWAY_URL"
-```
+The `deploy-all.sh` script automatically passes the Gateway URL from CDK outputs.
 
 **Option B: Direct command**
 ```bash

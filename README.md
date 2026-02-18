@@ -1,5 +1,27 @@
 # Guidance for AI-Powered QSR Voice Ordering System on AWS
 
+## Quick Start
+
+```bash
+# 1. Validate prerequisites
+./preflight-check.sh
+
+# 2. Deploy everything (IMPORTANT: Use a VALID email address)
+./deploy-all.sh --user-email your-valid-email@example.com --user-name "Your Name"
+
+# 3. Check status
+./status.sh
+
+# 4. Test the system
+cd backend/agentcore-runtime/test-client
+python3 client-cognito-sigv4.py --username AppUser --password <your-password>
+
+# 5. Cleanup when done
+./cleanup-all.sh
+```
+
+> **⚠️ IMPORTANT**: You **must** use a **valid email address** that you can access. AWS Cognito will send a temporary password to this email address, which is required for first-time login. Check your inbox and spam folder for the password email.
+
 ## Table of Contents
 - 🏛️ [Architecture Overview](#architecture-overview)
 - 📋 [Solution Overview](#solution-overview)
@@ -20,10 +42,7 @@
 
 ## Architecture Overview
 
-![Architecture diagram showing the three-layer decoupled architecture with MCP protocol](docs/architecture-diagram.png)
-*Figure 1: Three-layer architecture showing frontend, AgentCore Runtime, and backend services connected via MCP protocol*
-
-The architecture implements a production-ready pattern for voice-first AI ordering systems:
+The architecture implements a production-ready pattern for voice-first AI ordering systems with three decoupled layers:
 
 1. **Frontend Layer**: React application hosted on AWS Amplify with Cognito authentication
 2. **Agent Layer**: Python-based agent on Amazon Bedrock AgentCore Runtime with Nova Sonic v2 for bidirectional voice streaming
@@ -31,8 +50,6 @@ The architecture implements a production-ready pattern for voice-first AI orderi
 4. **Backend Layer**: Node.js Lambda functions with DynamoDB and AWS Location Services
 
 This architecture demonstrates how to build scalable, secure AI voice applications using the Model Context Protocol (MCP) for standardized tool interactions.
-
-For detailed architecture documentation, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Solution Overview
 
@@ -120,22 +137,42 @@ We recommend creating a [Budget](https://console.aws.amazon.com/billing/home#/bu
 
 **Objective**: Deploy all components of the QSR ordering system in the correct order.
 
-### One-Command Deployment
-
-The fastest way to deploy the entire system:
+### Recommended: Idempotent Deployment
 
 ```bash
-# Clone the repository
-git clone https://github.com/aws-samples/qsr-voice-ordering-agentcore.git
-cd qsr-voice-ordering-agentcore
+# 1. Validate prerequisites
+./preflight-check.sh
 
-# Deploy all components (replace with your email and name)
+# 2. Deploy (safe to run multiple times)
+./deploy-all.sh --user-email your-email@example.com --user-name "Your Name"
+
+# 3. Check status
+./status.sh
+```
+
+**Key Features:**
+- **Idempotent** - Run multiple times safely, updates existing resources
+- **State tracking** - Automatically tracks what's deployed in `.deployment-state.json`
+- **Preflight checks** - Validates Node.js, Python, AWS CLI, credentials, Bedrock access
+- **Smart updates** - Skips healthy components, only deploys what's needed
+- **Two modes**: `--mode update` (default, idempotent) or `--mode fresh` (clean redeploy)
+
+**Preflight checks validate:**
+- Node.js 20.x+, Python 3.12+, AWS CLI, CDK CLI
+- AWS credentials and Bedrock Nova Sonic v2 access
+
+### Alternative: One-Command Deployment
+
+```bash
+# Deploy all components at once
 ./deploy-all.sh --user-email your-email@example.com --user-name "Your Name"
 ```
 
 **Required Parameters**:
-- `--user-email`: Your email address (receives temporary Cognito password)
+- `--user-email`: **Your VALID email address** (AWS Cognito will send temporary password here - **you must have access to this email**)
 - `--user-name`: Your full name (for the test user profile)
+
+> **⚠️ CRITICAL**: The `--user-email` parameter must be a **valid, accessible email address**. AWS Cognito sends a temporary password to this email during deployment. If you don't receive the email within 5 minutes, check your spam/junk folder. Without this password, you cannot complete the deployment validation or testing.
 
 The script will:
 1. Deploy Backend Infrastructure (DynamoDB, Lambda, API Gateway, Cognito)
@@ -148,7 +185,7 @@ The script will:
 
 ### Manual Deployment (Optional)
 
-For step-by-step deployment of individual components, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+For step-by-step deployment of individual components, refer to each component's README:
 
 **Deployment Order**:
 1. [Backend Infrastructure](backend/backend-infrastructure/README.md) - DynamoDB, Lambda, API Gateway, Cognito
@@ -313,8 +350,6 @@ This solution implements several security best practices:
 - Use AWS Secrets Manager for sensitive configuration
 - Enable CloudTrail for audit logging
 
-For detailed security architecture, see [docs/SECURITY.md](docs/SECURITY.md).
-
 ## Performance Optimization
 
 To optimize the performance of your deployment:
@@ -378,7 +413,21 @@ After deploying the guidance, consider these enhancements:
 
 **Objective**: Remove all resources created by this guidance to avoid ongoing charges.
 
-### One-Command Cleanup
+```bash
+# Preview what will be deleted
+./cleanup-all.sh --dry-run
+
+# Delete all resources
+./cleanup-all.sh
+```
+
+**Enhanced cleanup features:**
+- **Idempotent** - Safe to run even if resources don't exist
+- **Dry-run mode** - Preview deletions with `--dry-run`
+- **Force mode** - Skip confirmations with `--force`
+- Automatically removes deployment state
+
+### Manual Cleanup (Optional)
 
 ```bash
 # Remove all deployed resources
@@ -400,8 +449,8 @@ cd backend/agentcore-runtime/cdk
 cdk destroy --all
 
 # 2. Delete AgentCore Gateway
-cd backend/agentcore-gateway
-python scripts/delete-gateway.py
+cd backend/agentcore-gateway/cdk
+cdk destroy --force
 
 # 3. Delete Backend Infrastructure
 cd backend/backend-infrastructure

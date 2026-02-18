@@ -1,516 +1,593 @@
 #!/bin/bash
 
 ################################################################################
-# Deploy All - QSR Ordering System
+# Idempotent Deploy - QSR Ordering System
 # 
-# Deploys all components of the QSR ordering system in the correct order:
-# 1. Backend Infrastructure (CDK)
-# 2. AgentCore Gateway (Python boto3)
-# 3. AgentCore Runtime (CDK)
-# 4. Synthetic Data (TODO)
-# 5. Frontend (TODO)
-#
-# Usage:
-#   ./deploy-all.sh [OPTIONS]
-#
-# Options:
-#   --skip-backend-infra    Skip Backend Infrastructure deployment
-#   --skip-gateway          Skip AgentCore Gateway deployment
-#   --skip-runtime          Skip AgentCore Runtime deployment
-#   --skip-synthetic-data   Skip Synthetic Data seeding (TODO)
-#   --skip-frontend         Skip Frontend deployment (TODO)
-#   --user-email EMAIL      Email for initial Cognito user (required for first deployment)
-#   --user-name NAME        Full name for initial Cognito user (required for first deployment)
-#   --help                  Show this help message
-#
+# Idempotent deployment that can be run multiple times safely
 ################################################################################
 
-set -e  # Exit on error (can be overridden with --ignore-errors)
+set -e
 
-# Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Configuration
+# Source state manager
+source ./deployment-state.sh
+
 OUTPUTS_DIR="cdk-outputs"
-SKIP_BACKEND_INFRA=false
-SKIP_GATEWAY=false
-SKIP_RUNTIME=false
-SKIP_SYNTHETIC_DATA=false
-SKIP_FRONTEND=false
 USER_EMAIL=""
 USER_NAME=""
+MODE="update"  # update (idempotent) or fresh (clean redeploy)
+SKIP_PREFLIGHT=false
+SKIP_SYNTHETIC_DATA=false
+SKIP_FRONTEND=false
+WITH_SYNTHETIC_DATA=false
+WITH_FRONTEND=false
 
-# Parse command line arguments
+# Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --skip-backend-infra)
-      SKIP_BACKEND_INFRA=true
-      shift
-      ;;
-    --skip-gateway)
-      SKIP_GATEWAY=true
-      shift
-      ;;
-    --skip-runtime)
-      SKIP_RUNTIME=true
-      shift
-      ;;
-    --skip-synthetic-data)
-      SKIP_SYNTHETIC_DATA=true
-      shift
-      ;;
-    --skip-frontend)
-      SKIP_FRONTEND=true
-      shift
-      ;;
-    --user-email)
-      USER_EMAIL="$2"
-      shift 2
-      ;;
-    --user-name)
-      USER_NAME="$2"
-      shift 2
-      ;;
+    --user-email) USER_EMAIL="$2"; shift 2 ;;
+    --user-name) USER_NAME="$2"; shift 2 ;;
+    --mode) MODE="$2"; shift 2 ;;
+    --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
+    --skip-synthetic-data) SKIP_SYNTHETIC_DATA=true; shift ;;
+    --with-synthetic-data) WITH_SYNTHETIC_DATA=true; shift ;;
+    --skip-frontend) SKIP_FRONTEND=true; shift ;;
+    --with-frontend) WITH_FRONTEND=true; shift ;;
     --help)
-      grep "^#" "$0" | grep -v "^#!/" | sed 's/^# //'
+      echo "Usage: ./deploy-all.sh [OPTIONS]"
+      echo ""
+      echo "Required Options:"
+      echo "  --user-email EMAIL           Email for Cognito user (required for first deployment)"
+      echo "  --user-name NAME             Full name for Cognito user (required for first deployment)"
+      echo ""
+      echo "Deployment Options:"
+      echo "  --mode MODE                  Deployment mode: update (default) or fresh"
+      echo "  --skip-preflight             Skip preflight checks"
+      echo ""
+      echo "Optional Components:"
+      echo "  --with-synthetic-data        Seed database with sample data (non-interactive)"
+      echo "  --skip-synthetic-data        Skip synthetic data seeding (non-interactive)"
+      echo "  --with-frontend              Deploy frontend application (non-interactive)"
+      echo "  --skip-frontend              Skip frontend deployment (non-interactive)"
+      echo ""
+      echo "Other:"
+      echo "  --help                       Show this help"
+      echo ""
+      echo "Deployment Modes:"
+      echo "  update  - Update existing deployment (idempotent, default)"
+      echo "  fresh   - Delete and redeploy everything from scratch"
+      echo ""
+      echo "Examples:"
+      echo "  # Deploy everything (will prompt for synthetic data and frontend)"
+      echo "  ./deploy-all.sh --user-email you@example.com --user-name \"Your Name\""
+      echo ""
+      echo "  # Deploy with synthetic data, skip frontend"
+      echo "  ./deploy-all.sh --user-email you@example.com --user-name \"Your Name\" \\"
+      echo "    --with-synthetic-data --skip-frontend"
+      echo ""
+      echo "  # Fresh deployment (clean redeploy)"
+      echo "  ./deploy-all.sh --user-email you@example.com --user-name \"Your Name\" \\"
+      echo "    --mode fresh"
       exit 0
       ;;
-    *)
-      echo -e "${RED}❌ Unknown option: $1${NC}"
-      echo "Use --help for usage information"
-      exit 1
-      ;;
+    *) echo -e "${RED}Unknown option: $1${NC}"; exit 1 ;;
   esac
 done
 
-# Helper functions
 print_section() {
   echo ""
-  echo -e "${BLUE}============================================================${NC}"
+  echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
   echo -e "${BLUE}  $1${NC}"
-  echo -e "${BLUE}============================================================${NC}"
+  echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
   echo ""
 }
 
-print_success() {
-  echo -e "${GREEN}✅ $1${NC}"
+print_success() { echo -e "${GREEN}✅ $1${NC}"; }
+print_error() { echo -e "${RED}❌ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+
+# Helper: extract JSON value from file - json_val <file> <stack> <key> [default]
+json_val() {
+  local file=$1 stack=$2 key=$3 default=${4:-}
+  node -e "const d=JSON.parse(require('fs').readFileSync('$file','utf8')); console.log((d['$stack']||{})['$key']||'$default')"
 }
 
-print_error() {
-  echo -e "${RED}❌ $1${NC}"
+# Helper: extract JSON value from stdin
+json_stdin() {
+  local key=$1 default=${2:-}
+  node -e "let b='';process.stdin.on('data',c=>b+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(b)['$key']||'$default')}catch(e){console.log('$default')}})"
 }
 
-print_warning() {
-  echo -e "${YELLOW}⚠️  $1${NC}"
-}
+# Run preflight checks
+if [ "$SKIP_PREFLIGHT" = false ]; then
+  print_section "Running Preflight Checks"
+  ./preflight-check.sh || exit 1
+fi
 
-print_info() {
-  echo -e "${BLUE}ℹ️  $1${NC}"
-}
-
-# Create outputs directory
+# Initialize state
+init_state
 mkdir -p "$OUTPUTS_DIR"
 
-# Start deployment
-print_section "QSR Ordering System - Full Deployment"
-print_info "Outputs will be saved to: $OUTPUTS_DIR/"
-echo ""
+# Handle fresh mode
+if [ "$MODE" = "fresh" ]; then
+  print_warning "Fresh mode: cleaning up existing deployment"
+  ./cleanup-all.sh --force --ignore-missing-resources || true
+  rm -f "$STATE_FILE"
+  init_state
+fi
+
+print_section "Idempotent Deployment - Mode: $MODE"
 
 ################################################################################
-# Step 1: Deploy Backend Infrastructure (CDK)
+# Backend Infrastructure
 ################################################################################
 
-if [ "$SKIP_BACKEND_INFRA" = false ]; then
-  print_section "Step 1: Deploying Backend Infrastructure (CDK)"
+print_section "Backend Infrastructure"
+
+BACKEND_DEPLOYED=$(is_deployed "backend-infrastructure")
+
+if [ "$BACKEND_DEPLOYED" = "true" ]; then
+  print_info "Backend infrastructure already deployed, checking stacks..."
   
+  # Check if stacks exist
+  STACKS_EXIST=true
+  for stack in QSR-DynamoDBStack QSR-LocationStack QSR-LambdaStack QSR-ApiGatewayStack QSR-CognitoStack; do
+    if [ -z "$(stack_exists $stack)" ]; then
+      print_warning "Stack $stack not found"
+      STACKS_EXIST=false
+    fi
+  done
+  
+  if [ "$STACKS_EXIST" = true ]; then
+    print_success "All backend stacks exist, updating..."
+  else
+    print_warning "Some stacks missing, redeploying..."
+    BACKEND_DEPLOYED="false"
+  fi
+fi
+
+if [ "$BACKEND_DEPLOYED" = "false" ]; then
   cd backend/backend-infrastructure
   
-  # Check if user email and name are provided (REQUIRED)
-  if [ -z "$USER_EMAIL" ]; then
-    print_error "User email is required for Cognito user creation"
-    print_info "Use: ./deploy-all.sh --user-email your-email@example.com --user-name \"Your Name\""
-    cd ../..
-    exit 1
-  fi
-  
-  if [ -z "$USER_NAME" ]; then
-    print_error "User name is required for Cognito user creation"
-    print_info "Use: ./deploy-all.sh --user-email your-email@example.com --user-name \"Your Name\""
-    cd ../..
+  if [ -z "$USER_EMAIL" ] || [ -z "$USER_NAME" ]; then
+    print_error "First deployment requires --user-email and --user-name"
     exit 1
   fi
   
   print_info "Installing dependencies..."
-  npm install
+  npm install > /dev/null 2>&1
   
-  print_info "Building CDK project..."
-  npm run build
-  
-  print_info "Deploying all stacks..."
+  print_info "Deploying backend infrastructure..."
   cdk deploy --all \
     --require-approval never \
     --parameters QSR-CognitoStack:UserEmail="$USER_EMAIL" \
     --parameters QSR-CognitoStack:UserName="$USER_NAME" \
     --outputs-file "../../$OUTPUTS_DIR/backend-infrastructure.json"
   
-  if [ $? -eq 0 ]; then
-    print_success "Backend Infrastructure deployed successfully"
-  else
-    print_error "Backend Infrastructure deployment failed"
-    cd ../..
-    exit 1
-  fi
+  update_state "backend-infrastructure" true '{"stacks": ["QSR-DynamoDBStack", "QSR-LocationStack", "QSR-LambdaStack", "QSR-ApiGatewayStack", "QSR-CognitoStack"]}'
+  print_success "Backend infrastructure deployed"
   
   cd ../..
 else
-  print_warning "Skipping Backend Infrastructure deployment"
+  print_success "Backend infrastructure up to date"
 fi
 
 ################################################################################
-# Step 2: Deploy AgentCore Gateway (Python boto3)
+# AgentCore Gateway (CDK)
 ################################################################################
 
-if [ "$SKIP_GATEWAY" = false ]; then
-  print_section "Step 2: Deploying AgentCore Gateway (Python boto3)"
+print_section "AgentCore Gateway (CDK)"
+
+GATEWAY_DEPLOYED=$(is_deployed "agentcore-gateway")
+
+if [ "$GATEWAY_DEPLOYED" = "true" ]; then
+  print_info "Gateway already deployed, checking stack..."
   
-  # Extract API Gateway ID from backend infrastructure outputs
-  if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-    API_GATEWAY_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-      python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-ApiGatewayStack', {}).get('ApiGatewayId', ''))")
-    
-    if [ -z "$API_GATEWAY_ID" ]; then
-      print_error "Could not extract API Gateway ID from backend infrastructure outputs"
-      exit 1
-    fi
-    
-    print_info "Using API Gateway ID: $API_GATEWAY_ID"
+  # Check if stack exists
+  if [ -n "$(stack_exists QSR-AgentCoreGatewayStack)" ]; then
+    print_success "Gateway stack exists, updating..."
   else
-    print_error "Backend infrastructure outputs not found. Deploy backend infrastructure first."
+    print_warning "Gateway stack not found, redeploying..."
+    GATEWAY_DEPLOYED="false"
+  fi
+fi
+
+if [ "$GATEWAY_DEPLOYED" = "false" ]; then
+  API_GATEWAY_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-ApiGatewayStack" "ApiGatewayId")
+  
+  if [ -z "$API_GATEWAY_ID" ]; then
+    print_error "Backend API Gateway ID not found. Deploy backend infrastructure first."
     exit 1
   fi
   
-  cd backend/agentcore-gateway
+  cd backend/agentcore-gateway/cdk
   
-  print_info "Installing Python dependencies..."
-  pip3 install -r scripts/requirements.txt --break-system-packages
+  print_info "Installing CDK dependencies..."
+  npm install > /dev/null 2>&1
   
-  print_info "Deploying AgentCore Gateway..."
-  python3 scripts/deploy-gateway.py \
-    --config scripts/config.yaml.example \
-    --api-gateway-id "$API_GATEWAY_ID" \
-    --stage prod \
-    --output-file "$(pwd)/../../$OUTPUTS_DIR/agentcore-gateway.json"
+  print_info "Deploying AgentCore Gateway via CDK..."
+  cdk deploy \
+    --require-approval never \
+    --context apiGatewayId="$API_GATEWAY_ID" \
+    --outputs-file "../../../$OUTPUTS_DIR/agentcore-gateway.json"
   
-  if [ $? -eq 0 ]; then
-    print_success "AgentCore Gateway deployed successfully"
+  # Extract Gateway ID from outputs
+  NEW_GATEWAY_ID=$(json_val "../../../$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayId")
+  
+  if [ -n "$NEW_GATEWAY_ID" ]; then
+    update_state "agentcore-gateway" true "{\"gateway_id\": \"$NEW_GATEWAY_ID\", \"stack\": \"QSR-AgentCoreGatewayStack\"}"
+    print_success "AgentCore Gateway deployed (ID: $NEW_GATEWAY_ID)"
   else
-    print_error "AgentCore Gateway deployment failed"
-    cd ../..
-    exit 1
+    print_warning "Gateway deployed but ID not found in outputs"
+    update_state "agentcore-gateway" true "{\"stack\": \"QSR-AgentCoreGatewayStack\"}"
   fi
   
-  cd ../..
+  cd ../../..
 else
-  print_warning "Skipping AgentCore Gateway deployment"
+  print_success "AgentCore Gateway up to date"
 fi
 
 ################################################################################
-# Step 3: Deploy AgentCore Runtime (CDK)
+# AgentCore Runtime
 ################################################################################
 
-if [ "$SKIP_RUNTIME" = false ]; then
-  print_section "Step 3: Deploying AgentCore Runtime (CDK)"
+print_section "AgentCore Runtime"
+
+RUNTIME_DEPLOYED=$(is_deployed "agentcore-runtime")
+
+if [ "$RUNTIME_DEPLOYED" = "true" ]; then
+  print_info "Runtime already deployed, checking stacks..."
   
-  # Extract Gateway URL from gateway outputs
-  if [ -f "$OUTPUTS_DIR/agentcore-gateway.json" ]; then
-    GATEWAY_URL=$(cat "$OUTPUTS_DIR/agentcore-gateway.json" | \
-      python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('gateway_url', ''))")
-    
-    if [ -z "$GATEWAY_URL" ]; then
-      print_error "Could not extract Gateway URL from gateway outputs"
-      exit 1
+  STACKS_EXIST=true
+  for stack in AgentCoreInfraStack AgentCoreRuntimeStack; do
+    if [ -z "$(stack_exists $stack)" ]; then
+      print_warning "Stack $stack not found"
+      STACKS_EXIST=false
     fi
-    
-    print_info "Using Gateway URL: $GATEWAY_URL"
+  done
+  
+  if [ "$STACKS_EXIST" = true ]; then
+    print_success "Runtime stacks exist, updating..."
   else
-    print_error "AgentCore Gateway outputs not found. Deploy gateway first."
+    print_warning "Some stacks missing, redeploying..."
+    RUNTIME_DEPLOYED="false"
+  fi
+fi
+
+if [ "$RUNTIME_DEPLOYED" = "false" ]; then
+  GATEWAY_URL=$(json_val "$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayUrl")
+  
+  if [ -z "$GATEWAY_URL" ]; then
+    print_error "Gateway URL not found. Deploy gateway first."
     exit 1
   fi
   
   cd backend/agentcore-runtime/cdk
   
   print_info "Installing dependencies..."
-  npm install
+  npm install > /dev/null 2>&1
   
-  print_info "Building CDK project..."
-  npm run build
-  
-  print_info "Deploying Infrastructure Stack..."
-  cdk deploy AgentCoreInfraStack \
-    --require-approval never \
-    --outputs-file "../../../$OUTPUTS_DIR/agentcore-runtime.json"
-  
-  print_info "Deploying Runtime Stack..."
-  cdk deploy AgentCoreRuntimeStack \
+  print_info "Deploying runtime stacks..."
+  cdk deploy --all \
     --require-approval never \
     --parameters AgentCoreRuntimeStack:AgentCoreGatewayUrl="$GATEWAY_URL" \
     --outputs-file "../../../$OUTPUTS_DIR/agentcore-runtime.json"
   
-  if [ $? -eq 0 ]; then
-    print_success "AgentCore Runtime deployed successfully"
-  else
-    print_error "AgentCore Runtime deployment failed"
-    cd ../../..
-    exit 1
-  fi
+  update_state "agentcore-runtime" true '{"stacks": ["AgentCoreInfraStack", "AgentCoreRuntimeStack"]}'
+  print_success "AgentCore Runtime deployed"
   
   cd ../../..
 else
-  print_warning "Skipping AgentCore Runtime deployment"
+  print_success "AgentCore Runtime up to date"
 fi
-
-################################################################################
-# Step 4: Seed Synthetic Data
-################################################################################
-
-if [ "$SKIP_SYNTHETIC_DATA" = false ]; then
-  print_section "Step 4: Seeding Synthetic Data"
-  
-  cd backend/synthetic-data
-  
-  print_info "Installing Python dependencies..."
-  pip3 install -r requirements.txt --break-system-packages
-  
-  print_info "Running interactive data population script..."
-  print_warning "You will be prompted for location and business information"
-  echo ""
-  
-  python3 populate_data.py
-  
-  if [ $? -eq 0 ]; then
-    print_success "Synthetic data seeded successfully"
-  else
-    print_error "Synthetic data seeding failed"
-    cd ../..
-    exit 1
-  fi
-  
-  cd ../..
-else
-  print_warning "Skipping Synthetic Data seeding"
-fi
-
-################################################################################
-# Step 5: Deploy Frontend (TODO)
-################################################################################
-
-if [ "$SKIP_FRONTEND" = false ]; then
-  print_section "Step 5: Deploying Frontend (TODO)"
-  print_warning "Frontend deployment not yet implemented"
-  
-  # TODO: Uncomment when frontend is ready
-  # cd frontend
-  # 
-  # print_info "Installing dependencies..."
-  # npm install
-  # 
-  # print_info "Building frontend..."
-  # npm run build
-  # 
-  # print_info "Deploying frontend..."
-  # # Add deployment command here (e.g., S3 + CloudFront)
-  # 
-  # if [ $? -eq 0 ]; then
-  #   print_success "Frontend deployed successfully"
-  # else
-  #   print_error "Frontend deployment failed"
-  #   cd ..
-  #   exit 1
-  # fi
-  # 
-  # cd ..
-else
-  print_warning "Skipping Frontend deployment"
-fi
-
-################################################################################
-# Deployment Complete
-################################################################################
-
-print_section "Deployment Complete!"
-
-print_success "All components deployed successfully"
-echo ""
-print_info "Deployment outputs saved to: $OUTPUTS_DIR/"
-echo ""
-
-# Display key outputs
-if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-  echo -e "${BLUE}Backend Infrastructure Outputs:${NC}"
-  cat "$OUTPUTS_DIR/backend-infrastructure.json" | python3 -m json.tool | head -20
-  echo ""
-fi
-
-if [ -f "$OUTPUTS_DIR/agentcore-gateway.json" ]; then
-  echo -e "${BLUE}AgentCore Gateway Outputs:${NC}"
-  cat "$OUTPUTS_DIR/agentcore-gateway.json" | python3 -m json.tool
-  echo ""
-fi
-
-if [ -f "$OUTPUTS_DIR/agentcore-runtime.json" ]; then
-  echo -e "${BLUE}AgentCore Runtime Outputs:${NC}"
-  cat "$OUTPUTS_DIR/agentcore-runtime.json" | python3 -m json.tool | head -20
-  echo ""
-fi
-
-print_info "To clean up all resources, run: ./cleanup-all.sh"
 
 ################################################################################
 # Password Setup for Test User
 ################################################################################
 
-# Only prompt for password change if backend infrastructure was deployed
-if [ "$SKIP_BACKEND_INFRA" = false ]; then
+FINAL_PASSWORD="<your-password>"
+
+# Only prompt for password change if we just deployed backend (new deployment or have user info)
+if [ -n "$USER_EMAIL" ] && [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
   print_section "Password Setup for Test User"
 
-  # Extract CLIENT_ID and REGION first (needed for password change)
-  if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-    CLIENT_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-      python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolClientId', ''))")
-    
-    REGION=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-      python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('Region', ''))")
-  fi
+  # Extract CLIENT_ID and REGION
+  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
+  
+  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region" "us-east-1")
 
   echo ""
   print_info "The test user 'AppUser' was created with a temporary password sent to: $USER_EMAIL"
   print_info "This temporary password must be changed on first login."
   echo ""
-  print_info "You can change it now to save time and get ready-to-use test commands,"
-  print_info "or you can change it later when you first use a test client."
+  print_info "You can change it now to get ready-to-use test commands,"
+  print_info "or change it later when you first use a test client."
   echo ""
 
-  # Ask if user wants to change password now
   read -p "Would you like to change the password now? (yes/no): " CHANGE_PASSWORD_NOW
-
-  FINAL_PASSWORD=""
 
   if [[ "$CHANGE_PASSWORD_NOW" =~ ^[Yy]([Ee][Ss])?$ ]]; then
     echo ""
     print_info "Changing password for AppUser..."
     echo ""
     
-    # Get temporary password
-    read -sp "Enter the temporary password from email: " TEMP_PASSWORD
-    echo ""
-    
-    # Get new password
-    read -sp "Enter new permanent password: " NEW_PASSWORD
-    echo ""
-    read -sp "Confirm new password: " NEW_PASSWORD_CONFIRM
-    echo ""
-    
-    # Check if passwords match
-    if [ "$NEW_PASSWORD" != "$NEW_PASSWORD_CONFIRM" ]; then
-      print_error "Passwords do not match. Skipping password change."
-      print_warning "You will need to change the password on first login to a test client."
-      FINAL_PASSWORD="<temporary-password-from-email>"
-    else
-      # Change password using AWS CLI
+    # Allow up to 3 attempts
+    PASSWORD_CHANGED=false
+    for attempt in 1 2 3; do
+      if [ $attempt -gt 1 ]; then
+        echo ""
+        print_warning "Attempt $attempt of 3"
+      fi
+      
+      read -sp "Enter the temporary password from email: " TEMP_PASSWORD
+      echo ""
+      read -sp "Enter new permanent password: " NEW_PASSWORD
+      echo ""
+      read -sp "Confirm new password: " NEW_PASSWORD_CONFIRM
+      echo ""
+      
+      if [ "$NEW_PASSWORD" != "$NEW_PASSWORD_CONFIRM" ]; then
+        print_error "Passwords do not match."
+        if [ $attempt -lt 3 ]; then
+          read -p "Try again? (yes/no): " retry
+          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+            break
+          fi
+        fi
+        continue
+      fi
+      
       print_info "Changing password..."
       
-      # First, authenticate with temporary password to get session
-      AUTH_RESPONSE=$(aws cognito-idp initiate-auth \
+      # Authenticate with timeout
+      AUTH_RESPONSE=$(timeout 10 aws cognito-idp initiate-auth \
         --auth-flow USER_PASSWORD_AUTH \
         --client-id "$CLIENT_ID" \
         --auth-parameters USERNAME=AppUser,PASSWORD="$TEMP_PASSWORD" \
         --region "$REGION" 2>&1)
       
+      AUTH_EXIT_CODE=$?
+      
+      if [ $AUTH_EXIT_CODE -eq 124 ]; then
+        print_error "Authentication timed out. Check your network connection."
+        if [ $attempt -lt 3 ]; then
+          read -p "Try again? (yes/no): " retry
+          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+            break
+          fi
+        fi
+        continue
+      fi
+      
+      if echo "$AUTH_RESPONSE" | grep -q "NotAuthorizedException"; then
+        print_error "Incorrect temporary password."
+        if [ $attempt -lt 3 ]; then
+          read -p "Try again? (yes/no): " retry
+          if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+            break
+          fi
+        fi
+        continue
+      fi
+      
       if echo "$AUTH_RESPONSE" | grep -q "ChallengeName"; then
-        # Extract session token
-        SESSION=$(echo "$AUTH_RESPONSE" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('Session', ''))")
+        SESSION=$(echo "$AUTH_RESPONSE" | json_stdin "Session" 2>/dev/null)
         
-        # Respond to NEW_PASSWORD_REQUIRED challenge
-        aws cognito-idp respond-to-auth-challenge \
+        if [ -z "$SESSION" ]; then
+          print_error "Failed to extract session token."
+          break
+        fi
+        
+        # Respond to challenge with timeout
+        CHALLENGE_RESPONSE=$(timeout 10 aws cognito-idp respond-to-auth-challenge \
           --client-id "$CLIENT_ID" \
           --challenge-name NEW_PASSWORD_REQUIRED \
           --session "$SESSION" \
           --challenge-responses USERNAME=AppUser,NEW_PASSWORD="$NEW_PASSWORD" \
-          --region "$REGION" > /dev/null 2>&1
+          --region "$REGION" 2>&1)
         
-        if [ $? -eq 0 ]; then
+        CHALLENGE_EXIT_CODE=$?
+        
+        if [ $CHALLENGE_EXIT_CODE -eq 124 ]; then
+          print_error "Password change timed out."
+          break
+        fi
+        
+        if [ $CHALLENGE_EXIT_CODE -eq 0 ]; then
           print_success "Password changed successfully!"
           FINAL_PASSWORD="$NEW_PASSWORD"
+          PASSWORD_CHANGED=true
+          break
         else
-          print_error "Failed to change password. You will need to change it on first login."
-          FINAL_PASSWORD="<temporary-password-from-email>"
+          print_error "Failed to change password: $(echo "$CHALLENGE_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4)"
+          if [ $attempt -lt 3 ]; then
+            read -p "Try again? (yes/no): " retry
+            if [[ ! "$retry" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+              break
+            fi
+          fi
         fi
       else
-        print_error "Failed to authenticate with temporary password."
-        print_warning "Please verify the temporary password and try changing it manually."
-        FINAL_PASSWORD="<temporary-password-from-email>"
+        print_error "Unexpected authentication response."
+        echo "$AUTH_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4
+        break
       fi
+    done
+    
+    if [ "$PASSWORD_CHANGED" = false ]; then
+      print_warning "Password not changed. You'll need to change it on first login."
+      FINAL_PASSWORD="<temporary-password-from-email>"
     fi
   else
-    print_info "Skipping password change. You will need to change it on first login to a test client."
+    print_info "Skipping password change. You will need to change it on first login."
     FINAL_PASSWORD="<temporary-password-from-email>"
   fi
-
   echo ""
-else
-  # Backend infrastructure was skipped, use placeholder password
-  FINAL_PASSWORD="<your-password>"
+fi
+
+################################################################################
+# Synthetic Data (Optional)
+################################################################################
+
+# Determine if we should deploy synthetic data
+SHOULD_DEPLOY_SYNTHETIC=false
+
+if [ "$WITH_SYNTHETIC_DATA" = true ]; then
+  SHOULD_DEPLOY_SYNTHETIC=true
+elif [ "$SKIP_SYNTHETIC_DATA" = false ]; then
+  # Ask user interactively
+  print_section "Synthetic Data (Optional)"
+  echo ""
+  print_info "Would you like to populate the database with sample data?"
+  print_info "This includes sample locations, menu items, customers, and orders."
+  echo ""
+  read -p "Seed synthetic data? (yes/no): " SEED_DATA
+  
+  if [[ "$SEED_DATA" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    SHOULD_DEPLOY_SYNTHETIC=true
+  fi
+fi
+
+if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
+  print_section "Seeding Synthetic Data"
+  
+  # Check if already populated
+  DATA_POPULATED=$(is_deployed "synthetic-data")
+  
+  if [ "$DATA_POPULATED" = "true" ]; then
+    print_warning "Synthetic data already populated"
+    read -p "Do you want to repopulate (will clear existing data)? (yes/no): " REPOPULATE
+    if [[ ! "$REPOPULATE" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+      print_info "Skipping synthetic data"
+    else
+      cd backend/synthetic-data
+      
+      print_info "Installing dependencies..."
+      pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
+      
+      print_info "Populating database with synthetic data..."
+      python3 populate_data.py
+      
+      # Get counts (if script outputs them)
+      update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
+      print_success "Synthetic data populated"
+      
+      cd ../..
+    fi
+  else
+    cd backend/synthetic-data
+    
+    print_info "Installing dependencies..."
+    pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
+    
+    print_info "Populating database with synthetic data..."
+    python3 populate_data.py
+    
+    update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
+    print_success "Synthetic data populated"
+    
+    cd ../..
+  fi
+fi
+
+################################################################################
+# Frontend (Optional)
+################################################################################
+
+# Determine if we should deploy frontend
+SHOULD_DEPLOY_FRONTEND=false
+
+if [ "$WITH_FRONTEND" = true ]; then
+  SHOULD_DEPLOY_FRONTEND=true
+elif [ "$SKIP_FRONTEND" = false ]; then
+  # Check if frontend directory exists
+  if [ -d "frontend" ]; then
+    print_section "Frontend (Optional)"
+    echo ""
+    print_info "Would you like to deploy the frontend application?"
+    print_info "This requires AWS Amplify to be configured."
+    echo ""
+    read -p "Deploy frontend? (yes/no): " DEPLOY_FRONTEND
+    
+    if [[ "$DEPLOY_FRONTEND" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+      SHOULD_DEPLOY_FRONTEND=true
+    fi
+  fi
+fi
+
+if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
+  if [ ! -d "frontend" ]; then
+    print_warning "Frontend directory not found, skipping..."
+  else
+    print_section "Deploying Frontend to AWS Amplify"
+    
+    # Step 1: Deploy CDK stack (creates Amplify App)
+    cd frontend/cdk
+    
+    print_info "Installing CDK dependencies..."
+    npm install > /dev/null 2>&1
+    
+    print_info "Creating Amplify App via CDK..."
+    cdk deploy --require-approval never \
+      --outputs-file "../../$OUTPUTS_DIR/frontend.json"
+    
+    cd ..
+    
+    # Step 2: Deploy frontend code to Amplify
+    print_info "Installing frontend dependencies..."
+    npm install > /dev/null 2>&1
+    
+    print_info "Deploying frontend code to Amplify..."
+    npm run deploy:amplify
+    
+    AMPLIFY_URL=$(json_val "../$OUTPUTS_DIR/frontend.json" "QSR-FrontendStack" "AmplifyAppUrl")
+    
+    update_state "frontend" true "{\"url\": \"$AMPLIFY_URL\"}"
+    print_success "Frontend deployed to Amplify"
+    print_info "Frontend URL: $AMPLIFY_URL"
+    
+    cd ..
+  fi
 fi
 
 ################################################################################
 # Test Commands - Ready to Copy and Paste
 ################################################################################
 
-print_section "Test Commands - Ready to Copy and Paste"
+print_section "Ready-to-Use Test Commands"
 
 # Extract values from deployment outputs
 if [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-  USER_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolId', ''))")
+  USER_POOL_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolId")
   
-  CLIENT_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('UserPoolClientId', ''))")
+  CLIENT_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "UserPoolClientId")
   
-  IDENTITY_POOL_ID=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('IdentityPoolId', ''))")
+  IDENTITY_POOL_ID=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "IdentityPoolId")
   
-  REGION=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-CognitoStack', {}).get('Region', ''))")
+  REGION=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-CognitoStack" "Region" "us-east-1")
   
-  MAP_NAME=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-LocationStack', {}).get('MapName', ''))")
-  
-  PLACE_INDEX_NAME=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-LocationStack', {}).get('PlaceIndexName', ''))")
-  
-  API_GATEWAY_URL=$(cat "$OUTPUTS_DIR/backend-infrastructure.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('QSR-ApiGatewayStack', {}).get('ApiGatewayUrl', ''))")
+  API_GATEWAY_URL=$(json_val "$OUTPUTS_DIR/backend-infrastructure.json" "QSR-ApiGatewayStack" "ApiGatewayUrl")
 fi
 
-# Extract Runtime ARN from agentcore-runtime outputs
+# Extract Runtime ARN
 if [ -f "$OUTPUTS_DIR/agentcore-runtime.json" ]; then
-  RUNTIME_ARN=$(cat "$OUTPUTS_DIR/agentcore-runtime.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('AgentCoreRuntimeStack', {}).get('AgentRuntimeArn', ''))")
+  RUNTIME_ARN=$(json_val "$OUTPUTS_DIR/agentcore-runtime.json" "AgentCoreRuntimeStack" "AgentRuntimeArn")
 fi
 
-# Extract Gateway URL from agentcore-gateway outputs
+# Extract Gateway URL (CDK format)
 if [ -f "$OUTPUTS_DIR/agentcore-gateway.json" ]; then
-  GATEWAY_URL=$(cat "$OUTPUTS_DIR/agentcore-gateway.json" | \
-    python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('gateway_url', ''))")
+  GATEWAY_URL=$(json_val "$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayUrl")
 fi
 
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  1. AgentCore Runtime WebSocket Test Client (with UI)${NC}"
+echo -e "${GREEN}  1. AgentCore Runtime WebSocket Test (Interactive UI)${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
@@ -524,50 +601,36 @@ if [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$IDENTITY_POOL_ID" ] &
   --runtime-arn $RUNTIME_ARN \\
   --region $REGION${NC}"
   echo ""
-  print_info "Then open your browser to: http://localhost:8000"
-  print_info "This client provides an interactive UI with map, location services, and WebSocket conversation"
+  print_info "Then open: http://localhost:8000"
   
   if [ "$FINAL_PASSWORD" == "<temporary-password-from-email>" ]; then
-    echo ""
-    print_warning "Note: You will be prompted to change the temporary password on first login"
+    print_warning "Note: You'll be prompted to change the temporary password on first login"
   fi
 else
-  print_warning "Missing required values for AgentCore Runtime test client"
+  print_warning "Missing values for Runtime test. Check outputs in $OUTPUTS_DIR/"
 fi
 
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  2. AgentCore Gateway Test Client (MCP Tools)${NC}"
+echo -e "${GREEN}  2. AgentCore Gateway Test (MCP Tools)${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
 if [ -n "$GATEWAY_URL" ]; then
-  print_info "This client lists and calls MCP tools exposed by the gateway."
-  echo ""
-  print_info "List available tools:"
   echo -e "${BLUE}cd backend/agentcore-gateway/test-client && python3 test_gateway.py \\
   --gateway-url $GATEWAY_URL \\
   --list-tools${NC}"
-  echo ""
-  print_info "Call a specific tool (example: get_menu):"
-  echo -e "${BLUE}cd backend/agentcore-gateway/test-client && python3 test_gateway.py \\
-  --gateway-url $GATEWAY_URL \\
-  --tool-name get_menu \\
-  --tool-args '{}'${NC}"
 else
-  print_warning "AgentCore Gateway URL not found. Deploy gateway first or check outputs."
+  print_warning "Gateway URL not found. Deploy gateway first."
 fi
 
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  3. API Gateway Test Script (AWS_IAM Authorization)${NC}"
+echo -e "${GREEN}  3. API Gateway Test (All Endpoints)${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
-if [ -n "$API_GATEWAY_URL" ] && [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$IDENTITY_POOL_ID" ] && [ -n "$REGION" ]; then
-  print_info "The API Gateway uses AWS_IAM authorization with SigV4 signing."
-  print_info "Use the test-api.sh script to test all endpoints:"
-  echo ""
+if [ -n "$API_GATEWAY_URL" ] && [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$IDENTITY_POOL_ID" ]; then
   echo -e "${BLUE}cd backend/backend-infrastructure && ./test-api.sh \\
   --username AppUser \\
   --password '$FINAL_PASSWORD' \\
@@ -576,35 +639,29 @@ if [ -n "$API_GATEWAY_URL" ] && [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] &&
   --user-pool-id $USER_POOL_ID \\
   --region $REGION \\
   --api-url $API_GATEWAY_URL${NC}"
-  echo ""
-  print_info "This script will:"
-  echo "  1. Authenticate with Cognito User Pool (get JWT token)"
-  echo "  2. Exchange JWT for temporary AWS credentials"
-  echo "  3. Sign requests with SigV4 and test all 8 endpoints"
   
   if [ "$FINAL_PASSWORD" == "<temporary-password-from-email>" ]; then
     echo ""
-    print_warning "Note: You will be prompted to change the temporary password on first run"
+    print_warning "Note: You'll be prompted to change the password on first run"
   fi
 else
-  print_warning "API Gateway URL or Cognito details not found. Deploy backend infrastructure first."
+  print_warning "API Gateway details not found. Deploy backend first."
 fi
 
+################################################################################
+# Complete
+################################################################################
+
 echo ""
-print_section "Notes"
-print_info "Test user credentials:"
-echo "  Username: AppUser"
-if [ "$FINAL_PASSWORD" == "<temporary-password-from-email>" ]; then
-  echo "  Password: <temporary-password-from-email>"
-  echo ""
-  print_warning "You will need to change the temporary password on first login to any test client"
-else
-  echo "  Password: (set during deployment)"
-  echo ""
-  print_success "Password has been changed and is ready to use!"
-fi
+print_section "Deployment Complete!"
+print_success "All components deployed successfully"
 echo ""
-print_info "Optional parameters for Runtime test client:"
-echo "  --map-name (default: QSRRestaurantMap)"
-echo "  --place-index-name (default: QSRRestaurantIndex)"
+print_info "State saved to: $STATE_FILE"
+print_info "Outputs saved to: $OUTPUTS_DIR/"
+echo ""
+print_info "Next steps:"
+echo "  • Copy and paste one of the test commands above"
+echo "  • Run './status.sh' to view deployment status"
+echo "  • Run './deploy-all.sh' again to update (idempotent)"
+echo "  • Run './cleanup-all.sh --dry-run' to preview cleanup"
 echo ""
