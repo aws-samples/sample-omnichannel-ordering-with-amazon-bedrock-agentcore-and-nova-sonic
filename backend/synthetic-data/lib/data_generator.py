@@ -7,9 +7,27 @@ and is NOT used for cryptographic purposes. For cryptographic operations, use
 the `secrets` module instead.
 """
 import random  # Used for test data generation, not cryptography
+import re
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
+
+# Street abbreviation expansion (safety net for any remaining abbreviations)
+STREET_ABBREVIATIONS = {
+    'Dr': 'Drive', 'St': 'Street', 'Ln': 'Lane', 'Pkwy': 'Parkway',
+    'Blvd': 'Boulevard', 'Ave': 'Avenue', 'Ct': 'Court', 'Rd': 'Road',
+    'Hwy': 'Highway', 'Cir': 'Circle', 'Pl': 'Place', 'Ter': 'Terrace',
+    'Trl': 'Trail', 'Fwy': 'Freeway', 'Expy': 'Expressway',
+}
+
+def expand_address(address: str) -> str:
+    """Expand street abbreviations in an address for speech-friendly output."""
+    if not address:
+        return address
+    result = address
+    for abbr, full in STREET_ABBREVIATIONS.items():
+        result = re.sub(rf'\b{abbr}\b\.?', full, result)
+    return result
 
 
 class DataGenerator:
@@ -161,8 +179,8 @@ class DataGenerator:
             'placeId': place['place_id'],
             'name': place['title'],
             'businessName': business_name,
-            'address': address['label'],
-            'street': address['street'],
+            'address': expand_address(address['label']),
+            'street': expand_address(address['street']),
             'city': address['city'],
             'state': address['state'],
             'zipCode': address['postal_code'],

@@ -127,8 +127,48 @@ class GeoPlacesClient:
             if len(position) < 2:
                 return None
             
-            # Extract address components
+            # Extract address components from structured API response
             address_obj = item.get('Address', {})
+            
+            # Region: structured object with Code and Name
+            region_obj = address_obj.get('Region', {})
+            region_name = region_obj.get('Name', '') if isinstance(region_obj, dict) else str(region_obj)
+            
+            # Country: structured object with Code2, Code3, Name
+            country_obj = address_obj.get('Country', {})
+            country_name = country_obj.get('Name', '') if isinstance(country_obj, dict) else str(country_obj)
+            country_code = country_obj.get('Code3', '') if isinstance(country_obj, dict) else ''
+            
+            # City: Locality is the correct field (not Municipality)
+            city = address_obj.get('Locality', '')
+            
+            # Build speech-friendly street from StreetComponents
+            street_components = address_obj.get('StreetComponents', [])
+            address_number = address_obj.get('AddressNumber', '')
+            
+            if street_components:
+                comp = street_components[0]
+                base_name = comp.get('BaseName', '')
+                street_type = comp.get('Type', '')
+                placement = comp.get('TypePlacement', 'AfterBaseName')
+                separator = comp.get('TypeSeparator', ' ')
+                
+                if placement == 'BeforeBaseName':
+                    full_street = f"{street_type}{separator}{base_name}" if street_type else base_name
+                else:
+                    full_street = f"{base_name}{separator}{street_type}" if street_type else base_name
+                
+                if address_number:
+                    full_street = f"{address_number} {full_street}"
+            else:
+                # Fallback to Street field
+                full_street = address_obj.get('Street', '')
+                if address_number and full_street:
+                    full_street = f"{address_number} {full_street}"
+            
+            # Build speech-friendly address from structured fields
+            addr_parts = [p for p in [full_street, city, f"{region_name} {address_obj.get('PostalCode', '')}".strip(), country_name] if p]
+            speech_friendly_address = ', '.join(addr_parts)
             
             # Calculate distance if center coordinates provided
             distance_meters = 0
@@ -141,12 +181,12 @@ class GeoPlacesClient:
                 'place_id': item.get('PlaceId', ''),
                 'title': item.get('Title', 'Unknown Location'),
                 'address': {
-                    'label': address_obj.get('Label', ''),
-                    'street': address_obj.get('Street', ''),
-                    'city': address_obj.get('Municipality', ''),
-                    'state': address_obj.get('Region', ''),
+                    'label': speech_friendly_address,
+                    'street': full_street,
+                    'city': city,
+                    'state': region_name,
                     'postal_code': address_obj.get('PostalCode', ''),
-                    'country': address_obj.get('Country', {}).get('Code3', 'USA')
+                    'country': country_code or country_name
                 },
                 'coordinates': {
                     'latitude': position[1],  # AWS returns [lon, lat]

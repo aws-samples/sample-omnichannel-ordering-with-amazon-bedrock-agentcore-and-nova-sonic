@@ -1,5 +1,9 @@
 const { LocationClient, SearchPlaceIndexForTextCommand } = require('@aws-sdk/client-location');
 
+// Expand street abbreviations for speech-friendly output
+const ADDR_ABBR = { Dr:'Drive',St:'Street',Ln:'Lane',Pkwy:'Parkway',Blvd:'Boulevard',Ave:'Avenue',Ct:'Court',Rd:'Road',Hwy:'Highway',Cir:'Circle',Pl:'Place',Ter:'Terrace',Trl:'Trail',Fwy:'Freeway',Expy:'Expressway' };
+function expandAddress(s) { if (!s) return s; let r = s; for (const [a, f] of Object.entries(ADDR_ABBR)) r = r.replace(new RegExp(`\\b${a}\\b\\.?`, 'g'), f); return r; }
+
 const locationClient = new LocationClient({});
 const PLACE_INDEX_NAME = process.env.PLACE_INDEX_NAME;
 
@@ -39,8 +43,8 @@ exports.handler = async (event) => {
     const coordinates = {
       latitude: place.Geometry.Point[1],
       longitude: place.Geometry.Point[0],
-      label: place.Label,
-      address: place.Label
+      label: expandAddress(place.Label),
+      address: expandAddress(place.Label)
     };
 
     return {
