@@ -1,5 +1,93 @@
 # Guidance for AI-Powered QSR Voice Ordering System on AWS
 
+## Table of Contents
+- 📋 [Solution Overview](#solution-overview)
+- 🏛️ [Architecture Overview](#architecture-overview)
+- � [Quick Start](#quick-start)
+- 💰 [Cost](#cost)
+- ✅ [Prerequisites](#prerequisites)
+- 🚀 [Deployment Steps](#deployment-steps)
+- 🔍 [Deployment Validation](#deployment-validation)
+- 📘 [Running the Guidance](#running-the-guidance)
+- 🧪 [Testing](#testing)
+- 🔒 [Security Considerations](#security-considerations)
+- 🚀 [Performance Optimization](#performance-optimization)
+- ➡️ [Next Steps](#next-steps)
+- 🧹 [Cleanup](#cleanup)
+- ❓ [FAQ, Known Issues, Additional Considerations, and Limitations](#faq-known-issues-additional-considerations-and-limitations)
+- 📝 [Revisions](#revisions)
+- ⚠️ [Notices](#notices)
+- 👥 [Authors](#authors)
+
+## Solution Overview
+
+This guidance demonstrates how to build an AI-powered voice ordering system for quick-service restaurants (QSR) that enables customers to place hands-free orders through natural voice conversation — no screens, no typing, no tapping. Whether on the go or multitasking, customers simply speak their order and the system handles the rest. The solution addresses the rapidly growing QSR voice ordering market, projected to reach **$1.32 billion by 2030**.
+
+**What**: A production-ready voice ordering system using Amazon Bedrock AgentCore with Nova 2 Sonic for natural conversation, AWS Location Services for route optimization, and a four-section decoupled architecture.
+
+**Who**: QSR businesses, restaurant chains, and developers building voice-first AI applications.
+
+**Why**: Drive-thru lanes are a bottleneck — customers wait in line just to place an order, then wait again for pickup. Voice AI lets customers order ahead from their phone before they even reach the restaurant, turning the drive-thru into a pickup lane. For those already in line, it removes the wait at the menu board — order by voice from anywhere in the queue. The result: the bottleneck shifts from the lane to the kitchen, where it can be solved with workforce optimization rather than costly real estate expansion.
+
+The solution leverages:
+- [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agents/) for agent hosting and bidirectional streaming
+- [Amazon Nova 2 Sonic](https://aws.amazon.com/bedrock/nova/) for speech-to-speech with async tool calling
+- [Strands Agents](https://strandsagents.com/) framework for building the conversational agent
+- [AWS Location Services](https://aws.amazon.com/location/) for geocoding and route optimization
+- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for standardized tool interactions
+- [AWS CDK](https://aws.amazon.com/cdk/) for infrastructure as code
+
+### Demo
+
+[Demo video placeholder - voice ordering conversation with interruptions and location-based recommendations]
+
+## Architecture Overview
+
+The architecture implements a production-ready pattern for voice-first AI ordering systems with four decoupled sections:
+
+![Architecture Diagram](assets/infrastructure.png)
+
+### Section A — Backend Infrastructure
+
+Five CDK stacks deployed in dependency order:
+
+- **QSR-DynamoDBStack** — Five tables: customer profiles, orders, menu items, carts, and locations
+- **QSR-LocationStack** — AWS Location Services for geocoding, route calculation, and map rendering
+- **QSR-LambdaStack** — Eight Lambda functions for customer lookups, order management, menu retrieval, cart operations, and location search, each with scoped IAM roles
+- **QSR-ApiGatewayStack** — REST API fronting the Lambda functions with IAM authorization
+- **QSR-CognitoStack** — User Pool, Identity Pool, authenticated IAM role (with API, AgentCore, and Location permissions), and an initial test user
+
+### Section B — AgentCore Gateway
+
+A CDK stack with a Node.js Custom Resource that calls the Bedrock AgentCore control plane APIs to create:
+
+- An IAM service role for the gateway
+- An AgentCore Gateway (`qsr-ordering-gateway`) with MCP protocol
+- A Gateway Target (`qsr-backend-api`) pointing to the API Gateway from Section A, exposing all eight endpoints as discoverable MCP tools
+
+### Section C — AgentCore Runtime
+
+Two CDK stacks:
+
+- **AgentCoreInfraStack** — ECR repository, S3 source bucket, CodeBuild project (ARM64 Docker builds), and IAM roles for CodeBuild and the runtime
+- **AgentCoreRuntimeStack** — Uploads agent source to S3, triggers a CodeBuild Docker build, waits for completion, then creates an AgentCore Runtime (`qsr_ordering_agent_runtime`) with WebSocket protocol and the Gateway URL from Section B
+
+The agent is built with the [Strands Agents](https://strandsagents.com/) framework and uses Amazon Nova 2 Sonic for bidirectional voice streaming.
+
+### Section D — Frontend (AWS Amplify)
+
+A CDK stack creates an AWS Amplify App for hosting the React frontend. After the stack deploys, the frontend code is built and pushed to Amplify via CLI.
+
+### User Request Flow
+
+1. User opens the web app on Amplify and authenticates with Cognito (username + password → JWT tokens)
+2. Frontend exchanges the ID Token with the Identity Pool for temporary AWS credentials
+3. Frontend opens a SigV4-signed WebSocket to AgentCore Runtime and sends the Access Token for identity verification
+4. Runtime validates the token via Cognito GetUser API and extracts the customer's name, email, and customerId
+5. Runtime initializes Nova 2 Sonic on Bedrock with a personalized system prompt
+6. Runtime connects to AgentCore Gateway as an MCP client (SigV4) and discovers available tools
+7. User speaks their order — the agent processes voice through Nova 2 Sonic and invokes tools asynchronously via MCP
+
 ## Quick Start
 
 ```bash
@@ -22,87 +110,29 @@ python3 client-cognito-sigv4.py --username AppUser --password <your-password>
 
 > **⚠️ IMPORTANT**: You **must** use a **valid email address** that you can access. AWS Cognito will send a temporary password to this email address, which is required for first-time login. Check your inbox and spam folder for the password email.
 
-## Table of Contents
-- 🏛️ [Architecture Overview](#architecture-overview)
-- 📋 [Solution Overview](#solution-overview)
-- 💰 [Cost](#cost)
-- ✅ [Prerequisites](#prerequisites)
-- 🚀 [Deployment Steps](#deployment-steps)
-- 🔍 [Deployment Validation](#deployment-validation)
-- 📘 [Running the Guidance](#running-the-guidance)
-- 🧪 [Testing](#testing)
-- 🔒 [Security Considerations](#security-considerations)
-- 🚀 [Performance Optimization](#performance-optimization)
-- ➡️ [Next Steps](#next-steps)
-- 🧹 [Cleanup](#cleanup)
-- ❓ [FAQ, Known Issues, Additional Considerations, and Limitations](#faq-known-issues-additional-considerations-and-limitations)
-- 📝 [Revisions](#revisions)
-- ⚠️ [Notices](#notices)
-- 👥 [Authors](#authors)
-
-## Architecture Overview
-
-The architecture implements a production-ready pattern for voice-first AI ordering systems with three decoupled layers:
-
-1. **Frontend Layer**: React application hosted on AWS Amplify with Cognito authentication
-2. **Agent Layer**: Python-based agent on Amazon Bedrock AgentCore Runtime with Nova Sonic v2 for bidirectional voice streaming
-3. **Gateway Layer**: AgentCore Gateway exposing backend APIs as MCP tools
-4. **Backend Layer**: Node.js Lambda functions with DynamoDB and AWS Location Services
-
-This architecture demonstrates how to build scalable, secure AI voice applications using the Model Context Protocol (MCP) for standardized tool interactions.
-
-## Solution Overview
-
-This guidance demonstrates how to build an AI-powered voice ordering system for quick-service restaurants (QSR) that enables customers to place hands-free orders while driving. The solution addresses the rapidly growing QSR voice ordering market, projected to reach **$1.32 billion by 2030**.
-
-**What**: A production-ready voice ordering system using Amazon Bedrock AgentCore with Nova Sonic v2 for natural conversation, AWS Location Services for route optimization, and a three-layer decoupled architecture.
-
-**Who**: QSR businesses, restaurant chains, and developers building voice-first AI applications.
-
-**Why**: Transform commute time into ordering time with hands-free voice ordering, personalized recommendations, and route-optimized pickup locations. Voice ordering systems in the QSR industry have demonstrated significant improvements in order accuracy and service time reduction.
-
-The solution leverages:
-- [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agents/) for agent hosting and bidirectional streaming
-- [Amazon Nova Sonic v2](https://aws.amazon.com/bedrock/nova/) for speech-to-speech with async tool calling
-- [AWS Location Services](https://aws.amazon.com/location/) for geocoding and route optimization
-- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for standardized tool interactions
-- [AWS CDK](https://aws.amazon.com/cdk/) for infrastructure as code
-
-### Demo
-
-[Demo video placeholder - voice ordering conversation with interruptions and location-based recommendations]
-
-### High-Level Steps
-
-1. User authenticates via Amazon Cognito and receives temporary AWS credentials
-2. Frontend establishes WebSocket connection to AgentCore Runtime with SigV4 signing
-3. User speaks order via microphone (16kHz PCM audio streaming)
-4. AgentCore Runtime processes voice with Nova Sonic v2 and invokes tools asynchronously
-5. AgentCore Gateway translates MCP tool calls to API Gateway REST calls
-6. Lambda functions query DynamoDB and Location Services for personalized responses
-7. Agent responds with voice output and order confirmation
-
 ## Cost
 
 You are responsible for the cost of the AWS services used while running this Guidance.
-
-As of January 2025, the cost for running this Guidance with the default settings in the US East (N. Virginia) Region is approximately **$45.00** per month for 1,000 voice orders with 5 restaurant locations.
 
 We recommend creating a [Budget](https://console.aws.amazon.com/billing/home#/budgets) through [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/) to help manage costs. Prices are subject to change. For full details, refer to the pricing webpage for each AWS service used in this Guidance.
 
 ### Sample Cost Table
 
-| AWS Service | Dimensions | Cost (USD) |
-|-------------|------------|------------|
-| Amazon Bedrock AgentCore Runtime | 1,000 sessions/month, 5 min avg duration | $25.00/month |
-| Amazon Bedrock (Nova Sonic v2) | 1,000 conversations, 2K input + 1K output tokens avg | $15.00/month |
-| AWS Lambda | 8,000 invocations/month, 512MB memory, 1s avg duration | $2.00/month |
-| Amazon DynamoDB | 5 tables, on-demand pricing, 10K reads + 5K writes/month | $1.50/month |
-| AWS Location Services | 1,000 geocoding + 500 route calculations/month | $1.00/month |
-| Amazon Cognito | 1,000 active users/month | $0.00/month |
-| AWS Amplify | Hosting for frontend (5GB storage, 15GB bandwidth) | $0.50/month |
+The following estimates assume 1,000 voice orders per month with 5 restaurant locations in US East (N. Virginia).
 
-**Note**: Costs scale with usage. For 10,000 orders/month, estimated cost is ~$350/month.
+| AWS Service | Dimensions | Pricing Reference |
+|-------------|------------|-------------------|
+| [Amazon Bedrock AgentCore Runtime](https://aws.amazon.com/bedrock/agentcore/pricing/) | Consumption-based: vCPU-seconds + GB-seconds per session | [AgentCore Pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) |
+| [Amazon Bedrock AgentCore Gateway](https://aws.amazon.com/bedrock/agentcore/pricing/) | Per Search API call + per InvokeTool API call | [AgentCore Pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) |
+| [Amazon Bedrock (Nova 2 Sonic)](https://aws.amazon.com/nova/pricing/) | Speech: $0.003/1K input, $0.012/1K output tokens. Text (tool calls): $0.00033/1K input, $0.00275/1K output tokens | [Nova Pricing](https://aws.amazon.com/nova/pricing/) |
+| [AWS Lambda](https://aws.amazon.com/lambda/pricing/) | 8,000 invocations/month, 512MB, ~1s avg duration | [Lambda Pricing](https://aws.amazon.com/lambda/pricing/) |
+| [Amazon API Gateway](https://aws.amazon.com/api-gateway/pricing/) | REST API, ~8,000 calls/month | [API Gateway Pricing](https://aws.amazon.com/api-gateway/pricing/) |
+| [Amazon DynamoDB](https://aws.amazon.com/dynamodb/pricing/) | 5 tables, on-demand, ~10K reads + 5K writes/month | [DynamoDB Pricing](https://aws.amazon.com/dynamodb/pricing/) |
+| [AWS Location Services](https://aws.amazon.com/location/pricing/) | ~1,000 geocoding + 500 route calculations/month | [Location Pricing](https://aws.amazon.com/location/pricing/) |
+| [Amazon Cognito](https://aws.amazon.com/cognito/pricing/) | Up to 10,000 MAUs in free tier | [Cognito Pricing](https://aws.amazon.com/cognito/pricing/) |
+| [AWS Amplify](https://aws.amazon.com/amplify/pricing/) | Hosting: 5GB storage, 15GB bandwidth/month | [Amplify Pricing](https://aws.amazon.com/amplify/pricing/) |
+
+**Note**: AgentCore Runtime and Gateway use consumption-based pricing (you pay only for actual compute and API calls). Refer to the [AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) for detailed examples and calculators.
 
 ## Prerequisites
 
@@ -111,12 +141,11 @@ We recommend creating a [Budget](https://console.aws.amazon.com/billing/home#/bu
 - Python 3.12 or later
 - AWS CLI configured with credentials
 - AWS CDK CLI: `npm install -g aws-cdk`
-- Docker (for local testing, optional)
 
 **AWS Account Requirements**
 - Access to the following services:
   - Amazon Bedrock AgentCore Runtime
-  - Amazon Bedrock (Nova Sonic v2 model access)
+  - Amazon Bedrock (Nova 2 Sonic model access)
   - AWS Lambda
   - Amazon DynamoDB
   - AWS Location Services
@@ -131,7 +160,7 @@ We recommend creating a [Budget](https://console.aws.amazon.com/billing/home#/bu
   - Create Lambda functions and API Gateway endpoints
   - Set up DynamoDB tables and Location Services resources
 
-**Important**: Ensure your AWS account has Amazon Bedrock model access for Nova Sonic v2. Request access through the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) if needed.
+**Important**: Ensure your AWS account has Amazon Bedrock model access for Nova 2 Sonic. Request access through the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) if needed.
 
 ## Deployment Steps
 
@@ -159,7 +188,7 @@ We recommend creating a [Budget](https://console.aws.amazon.com/billing/home#/bu
 
 **Preflight checks validate:**
 - Node.js 20.x+, Python 3.12+, AWS CLI, CDK CLI
-- AWS credentials and Bedrock Nova Sonic v2 access
+- AWS credentials and Bedrock Nova 2 Sonic access
 
 ### Alternative: One-Command Deployment
 
@@ -178,7 +207,7 @@ The script will:
 1. Deploy Backend Infrastructure (DynamoDB, Lambda, API Gateway, Cognito)
 2. Create test user "AppUser" and send temporary password to your email
 3. Deploy AgentCore Gateway (MCP server)
-4. Deploy AgentCore Runtime (Agent with Nova Sonic v2)
+4. Deploy AgentCore Runtime (Agent with Nova 2 Sonic)
 5. Display deployment outputs for configuration
 
 **Success Criteria**: All stacks deploy successfully and outputs are saved to `cdk-outputs/` directory.
@@ -190,7 +219,7 @@ For step-by-step deployment of individual components, refer to each component's 
 **Deployment Order**:
 1. [Backend Infrastructure](backend/backend-infrastructure/README.md) - DynamoDB, Lambda, API Gateway, Cognito
 2. [AgentCore Gateway](backend/agentcore-gateway/README.md) - MCP server for tool exposure
-3. [AgentCore Runtime](backend/agentcore-runtime/README.md) - Agent with Nova Sonic v2
+3. [AgentCore Runtime](backend/agentcore-runtime/README.md) - Agent with Nova 2 Sonic
 4. [Synthetic Data](backend/synthetic-data/README.md) - Sample data population (optional)
 
 **Important - Test User Setup**: 
@@ -355,7 +384,7 @@ This solution implements several security best practices:
 To optimize the performance of your deployment:
 
 ### Voice Latency
-- **Target**: Sub-700ms response latency with Nova Sonic v2
+- **Design goal**: Low latency for real-time speech-to-speech conversations ([Nova 2 Sonic Service Card](https://docs.aws.amazon.com/ai/responsible-ai/nova-2-sonic/overview.html))
 - **Optimization**: Use async tool calling to avoid blocking conversation
 - **Monitoring**: Track latency metrics in CloudWatch
 
@@ -390,7 +419,7 @@ After deploying the guidance, consider these enhancements:
 - Implement real-time order status updates
 
 ### Feature Enhancements
-- Multi-language support with Nova Sonic v2
+- Multi-language support with Nova 2 Sonic
 - Dietary filters and allergen warnings
 - Loyalty rewards and point redemption
 - Delivery tracking integration
@@ -488,7 +517,7 @@ Check the AWS Console to ensure all resources are removed:
 
 #### Agent Not Responding
 - **Problem**: Agent doesn't respond to voice input
-- **Solution**: Verify microphone permissions in browser. Check that Nova Sonic v2 model access is enabled.
+- **Solution**: Verify microphone permissions in browser. Check that Nova 2 Sonic model access is enabled.
 
 #### Tool Invocation Errors
 - **Problem**: "Tool invocation failed"
@@ -500,7 +529,7 @@ Check the AWS Console to ensure all resources are removed:
 
 ### Additional Considerations
 
-- **Bedrock Pricing**: Nova Sonic v2 charges per token (input and output)
+- **Bedrock Pricing**: Nova 2 Sonic charges per token (input and output)
 - **Rate Limiting**: Consider implementing rate limiting for production deployments
 - **Data Retention**: Configure DynamoDB TTL for automatic data cleanup
 - **Compliance**: Ensure voice recordings comply with local regulations (GDPR, CCPA, etc.)
@@ -509,7 +538,7 @@ Check the AWS Console to ensure all resources are removed:
 ### Limitations
 
 - **Voice Quality**: Requires stable internet connection for real-time streaming
-- **Language Support**: Currently supports English only (Nova Sonic v2 supports multiple languages)
+- **Language Support**: Currently supports English only (Nova 2 Sonic supports multiple languages)
 - **Concurrent Sessions**: Limited by AgentCore Runtime capacity (can be increased)
 - **Location Services**: Accuracy depends on GPS signal quality and address data
 
@@ -517,7 +546,7 @@ For issues or feature requests, please use the [GitHub Issues tab](https://githu
 
 ## Revisions
 
-- **v1.0.0** – Initial release with AgentCore Runtime, Nova Sonic v2, and MCP integration
+- **v1.0.0** – Initial release with AgentCore Runtime, Nova 2 Sonic, and MCP integration
 
 ## Notices
 
