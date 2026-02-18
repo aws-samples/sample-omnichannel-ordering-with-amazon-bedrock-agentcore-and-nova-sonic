@@ -19,7 +19,7 @@
 - ⚠️ [Notices](#notices)
 - 👥 [Authors](#authors)
 
-## Solution Overview
+## 📋 Solution Overview
 
 This guidance demonstrates how to build an AI-powered voice ordering system for quick-service restaurants (QSR) that enables customers to place hands-free orders through natural voice conversation — no screens, no typing, no tapping. Whether on the go or multitasking, customers simply speak their order and the system handles the rest. The solution addresses the rapidly growing QSR voice ordering market, projected to reach **$1.32 billion by 2030**.
 
@@ -41,7 +41,7 @@ The solution leverages:
 
 [Demo video placeholder - voice ordering conversation with interruptions and location-based recommendations]
 
-## Architecture Overview
+## 🏛️ Architecture Overview
 
 The architecture implements a production-ready pattern for voice-first AI ordering systems with four decoupled sections:
 
@@ -88,7 +88,7 @@ A CDK stack creates an AWS Amplify App for hosting the React frontend. After the
 6. Runtime connects to AgentCore Gateway as an MCP client (SigV4) and discovers available tools
 7. User speaks their order — the agent processes voice through Nova 2 Sonic and invokes tools asynchronously via MCP
 
-## Quick Start
+## ⚡ Quick Start
 
 ```bash
 # 1. Validate prerequisites
@@ -103,7 +103,7 @@ A CDK stack creates an AWS Amplify App for hosting the React frontend. After the
 
 > **⚠️ IMPORTANT**: You **must** use a **valid email address** that you can access. AWS Cognito will send a temporary password to this email address, which is required for first-time login. Check your inbox and spam folder for the password email.
 
-## Cost
+## 💰 Cost
 
 You are responsible for the cost of the AWS services used while running this Guidance.
 
@@ -133,7 +133,7 @@ The following estimates assume 1,000 voice orders per month with 5 restaurant lo
 - AgentCore Runtime uses consumption-based pricing — you pay only for active CPU and memory, not I/O wait time.
 - Costs scale linearly with usage. For 10,000 orders/month, estimated cost is ~$786.
 
-## Prerequisites
+## ✅ Prerequisites
 
 **Development Tools**
 - Node.js 20.x or later
@@ -161,7 +161,7 @@ The following estimates assume 1,000 voice orders per month with 5 restaurant lo
 
 **Important**: Ensure your AWS account has Amazon Bedrock model access for Nova 2 Sonic. Request access through the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) if needed.
 
-## Deployment Steps
+## 🚀 Deployment Steps
 
 **Objective**: Deploy all components of the QSR ordering system in the correct order.
 
@@ -227,7 +227,7 @@ For step-by-step deployment of individual components, refer to each component's 
 - Check your email (including spam folder) for the password
 - The first login will prompt you to change the temporary password
 
-## Deployment Validation
+## 🔍 Deployment Validation
 
 **Objective**: Verify that all components are working correctly together.
 
@@ -279,7 +279,7 @@ python populate_data.py
 
 If any validation step fails, refer to the [Troubleshooting](#troubleshooting) section.
 
-## Running the Guidance
+## 📘 Running the Guidance
 
 **Objective**: Use the deployed system to place voice orders.
 
@@ -340,7 +340,7 @@ Agent: Perfect! Your order is ready for pickup at Van Alstyne.
 - **Lambda Logs**: CloudWatch Logs at `/aws/lambda/<function-name>`
 - **API Gateway Logs**: CloudWatch Logs at `/aws/apigateway/<api-id>`
 
-## Testing
+## 🧪 Testing
 
 Each component has its own test client with detailed instructions:
 
@@ -359,7 +359,7 @@ Test voice and text conversations with the agent.
 - See [backend/agentcore-runtime/README.md#testing](backend/agentcore-runtime/README.md#testing)
 - Uses `client-cognito-sigv4.py` with web UI at http://localhost:8000
 
-## Security Considerations
+## 🔒 Security Considerations
 
 This solution implements several security best practices:
 
@@ -378,7 +378,7 @@ This solution implements several security best practices:
 - Use AWS Secrets Manager for sensitive configuration
 - Enable CloudTrail for audit logging
 
-## Performance Optimization
+## 🚀 Performance Optimization
 
 To optimize the performance of your deployment:
 
@@ -407,7 +407,7 @@ To optimize the performance of your deployment:
 - Implement session timeouts to reduce idle costs
 - Monitor usage with CloudWatch and Cost Explorer
 
-## Next Steps
+## ➡️ Next Steps
 
 After deploying the guidance, consider these enhancements:
 
@@ -437,7 +437,7 @@ After deploying the guidance, consider these enhancements:
 - Monitor conversation quality metrics
 - Analyze customer satisfaction scores
 
-## Cleanup
+## 🧹 Cleanup
 
 **Objective**: Remove all resources created by this guidance to avoid ongoing charges.
 
@@ -496,7 +496,7 @@ Check the AWS Console to ensure all resources are removed:
 
 **Success Criteria**: All resources are successfully removed and no longer incurring charges.
 
-## FAQ, Known Issues, Additional Considerations, and Limitations
+## ❓ FAQ, Known Issues, Additional Considerations, and Limitations
 
 ### Known Issues
 
@@ -543,11 +543,11 @@ Check the AWS Console to ensure all resources are removed:
 
 For issues or feature requests, please use the [GitHub Issues tab](https://github.com/aws-samples/qsr-voice-ordering-agentcore/issues).
 
-## Revisions
+## 📝 Revisions
 
 - **v1.0.0** – Initial release with AgentCore Runtime, Nova 2 Sonic, and MCP integration
 
-## Notices
+## ⚠️ Notices
 
 Customers are responsible for making their own independent assessment of the information in this Guidance.
 
@@ -560,7 +560,7 @@ AWS products or services are provided "as is" without warranties, representation
 
 AWS responsibilities and liabilities to its customers are controlled by AWS agreements, and this Guidance is not part of, nor does it modify, any agreement between AWS and its customers.
 
-## Authors
+## 👥 Authors
 
 - Sergio Barraza
 - Salman Ahmed
