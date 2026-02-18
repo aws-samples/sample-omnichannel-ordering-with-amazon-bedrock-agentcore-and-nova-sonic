@@ -26,6 +26,7 @@ SKIP_SYNTHETIC_DATA=false
 SKIP_FRONTEND=false
 WITH_SYNTHETIC_DATA=false
 WITH_FRONTEND=false
+FORCE_DEPLOY=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -38,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --with-synthetic-data) WITH_SYNTHETIC_DATA=true; shift ;;
     --skip-frontend) SKIP_FRONTEND=true; shift ;;
     --with-frontend) WITH_FRONTEND=true; shift ;;
+    --force-deploy) FORCE_DEPLOY=true; shift ;;
     --help)
       echo "Usage: ./deploy-all.sh [OPTIONS]"
       echo ""
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
       echo "Deployment Options:"
       echo "  --mode MODE                  Deployment mode: update (default) or fresh"
       echo "  --skip-preflight             Skip preflight checks"
+      echo "  --force-deploy               Force CDK deploy on all projects (bypass state checks)"
       echo ""
       echo "Optional Components:"
       echo "  --with-synthetic-data        Seed database with sample data (non-interactive)"
@@ -132,7 +135,10 @@ print_section "Backend Infrastructure"
 
 BACKEND_DEPLOYED=$(is_deployed "backend-infrastructure")
 
-if [ "$BACKEND_DEPLOYED" = "true" ]; then
+if [ "$FORCE_DEPLOY" = true ]; then
+  print_info "Force deploy: redeploying backend infrastructure..."
+  BACKEND_DEPLOYED="false"
+elif [ "$BACKEND_DEPLOYED" = "true" ]; then
   print_info "Backend infrastructure already deployed, checking stacks..."
   
   # Check if stacks exist
@@ -186,7 +192,10 @@ print_section "AgentCore Gateway (CDK)"
 
 GATEWAY_DEPLOYED=$(is_deployed "agentcore-gateway")
 
-if [ "$GATEWAY_DEPLOYED" = "true" ]; then
+if [ "$FORCE_DEPLOY" = true ]; then
+  print_info "Force deploy: redeploying gateway..."
+  GATEWAY_DEPLOYED="false"
+elif [ "$GATEWAY_DEPLOYED" = "true" ]; then
   print_info "Gateway already deployed, checking stack..."
   
   # Check if stack exists
@@ -241,7 +250,10 @@ print_section "AgentCore Runtime"
 
 RUNTIME_DEPLOYED=$(is_deployed "agentcore-runtime")
 
-if [ "$RUNTIME_DEPLOYED" = "true" ]; then
+if [ "$FORCE_DEPLOY" = true ]; then
+  print_info "Force deploy: redeploying runtime..."
+  RUNTIME_DEPLOYED="false"
+elif [ "$RUNTIME_DEPLOYED" = "true" ]; then
   print_info "Runtime already deployed, checking stacks..."
   
   STACKS_EXIST=true
@@ -327,12 +339,14 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
       print_info "Installing dependencies..."
       pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
       
-      print_info "Populating database with synthetic data..."
+      print_info "Clearing existing synthetic data..."
+      python3 cleanup_data.py --force
+      
+      print_info "Populating database with new synthetic data..."
       python3 populate_data.py
       
-      # Get counts (if script outputs them)
       update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
-      print_success "Synthetic data populated"
+      print_success "Synthetic data repopulated"
       
       cd ../..
     fi

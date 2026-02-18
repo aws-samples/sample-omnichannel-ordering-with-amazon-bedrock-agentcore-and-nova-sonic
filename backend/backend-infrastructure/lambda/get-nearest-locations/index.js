@@ -1,6 +1,11 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
+// Expand street abbreviations for speech-friendly output
+const ADDR_ABBR = { Dr:'Drive',St:'Street',Ln:'Lane',Pkwy:'Parkway',Blvd:'Boulevard',Ave:'Avenue',Ct:'Court',Rd:'Road',Hwy:'Highway',Cir:'Circle',Pl:'Place',Ter:'Terrace',Trl:'Trail',Fwy:'Freeway',Expy:'Expressway' };
+function expandAddress(s) { if (!s) return s; let r = s; for (const [a, f] of Object.entries(ADDR_ABBR)) r = r.replace(new RegExp(`\\b${a}\\b\\.?`, 'g'), f); return r; }
+function expandAddressFields(o) { if (!o) return o; for (const f of ['address','street','label','homeAddress','locationName']) if (o[f]) o[f] = expandAddress(o[f]); return o; }
+
 const ddbClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(ddbClient);
 
@@ -57,7 +62,8 @@ exports.handler = async (event) => {
     // Sort by distance and limit results
     const nearestLocations = locationsWithDistance
       .sort((a, b) => a.distance - b.distance)
-      .slice(0, maxResults);
+      .slice(0, maxResults)
+      .map(loc => expandAddressFields(loc));
 
     return {
       statusCode: 200,

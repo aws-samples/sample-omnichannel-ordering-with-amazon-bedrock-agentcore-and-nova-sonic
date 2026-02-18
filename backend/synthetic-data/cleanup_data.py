@@ -188,13 +188,19 @@ def scan_and_delete_items(table_name: str, region: str = 'us-east-1') -> Dict[st
         return {'deleted': deleted_count, 'errors': error_count + 1}
 
 
-def confirm_cleanup() -> bool:
+def confirm_cleanup(force: bool = False) -> bool:
     """
     Ask user to confirm cleanup operation.
+    
+    Args:
+        force: Skip confirmation prompt
     
     Returns:
         True if user confirms, False otherwise
     """
+    if force:
+        return True
+    
     print_warning("This will DELETE ALL DATA from the following tables:")
     print_warning("  - QSR-Locations")
     print_warning("  - QSR-Customers")
@@ -217,6 +223,8 @@ def confirm_cleanup() -> bool:
 
 def main():
     """Main execution flow."""
+    force = '--force' in sys.argv
+    
     print_header("QSR Ordering System - Cleanup Synthetic Data")
     
     # Step 1: Load deployment outputs
@@ -244,7 +252,7 @@ def main():
     print()
     
     # Step 3: Confirm cleanup
-    if not confirm_cleanup():
+    if not confirm_cleanup(force):
         print_warning("Cleanup cancelled")
         return 0
     
