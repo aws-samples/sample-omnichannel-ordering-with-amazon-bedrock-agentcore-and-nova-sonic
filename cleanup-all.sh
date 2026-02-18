@@ -10,6 +10,9 @@
 # 4. AgentCore Gateway (CDK)
 # 5. Backend Infrastructure (CDK)
 #
+# Resumable: tracks progress in .deployment-state.json so a failed cleanup
+# can be re-run and it will skip already-cleaned components.
+#
 # Usage:
 #   ./cleanup-all.sh [OPTIONS]
 #
@@ -32,9 +35,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Source state manager
+source ./deployment-state.sh
+
 # Configuration
 OUTPUTS_DIR="cdk-outputs"
-STATE_FILE=".deployment-state.json"
 SKIP_FRONTEND=false
 SKIP_RUNTIME=false
 SKIP_GATEWAY=false
@@ -79,11 +84,29 @@ json_val() {
   node -e "const d=JSON.parse(require('fs').readFileSync('$file','utf8')); console.log((d['$stack']||{})['$key']||'$default')" 2>/dev/null || echo "$default"
 }
 
-# Confirmation prompt
-confirm_cleanup() {
-  if [ "$FORCE" = true ]; then return 0; fi
-  
+################################################################################
+# Pre-flight: Check AWS credentials
+################################################################################
+
+print_section "QSR Ordering System - Full Cleanup"
+
+print_info "Checking AWS credentials..."
+if ! aws sts get-caller-identity --region us-east-1 > /dev/null 2>&1; then
+  print_error "AWS credentials are not configured or have expired."
+  print_info "Please set your AWS credentials and try again."
+  print_info "Example: export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=..."
+  exit 1
+fi
+print_success "AWS credentials valid"
+echo ""
+
+if [ "$DRY_RUN" = true ]; then
+  print_warning "DRY RUN MODE - No resources will be deleted"
   echo ""
+fi
+
+# Confirmation prompt
+if [ "$FORCE" != true ]; then
   echo -e "${YELLOW}⚠️  WARNING: This will delete ALL deployed resources!${NC}"
   echo ""
   echo "This includes:"
@@ -100,17 +123,10 @@ confirm_cleanup() {
     print_info "Cleanup cancelled"
     exit 0
   fi
-}
-
-# Start cleanup
-print_section "QSR Ordering System - Full Cleanup"
-
-if [ "$DRY_RUN" = true ]; then
-  print_warning "DRY RUN MODE - No resources will be deleted"
-  echo ""
 fi
 
-confirm_cleanup
+# Initialize state if it doesn't exist (so we can update it)
+init_state
 
 print_info "Starting cleanup in reverse deployment order..."
 echo ""
@@ -123,6 +139,12 @@ OVERALL_SUCCESS=true
 
 if [ "$SKIP_FRONTEND" = false ]; then
   print_section "Step 1: Cleaning up Frontend (Amplify)"
+  
+  FRONTEND_DEPLOYED=$(is_deployed "frontend")
+  
+  if [ "$FRONTEND_DEPLOYED" = "false" ]; then
+    print_info "Frontend not marked as deployed in state, checking CloudFormation..."
+  fi
   
   FRONTEND_STACK_EXISTS=$(aws cloudformation describe-stacks \
     --stack-name QSR-FrontendStack \
@@ -154,6 +176,7 @@ if [ "$SKIP_FRONTEND" = false ]; then
         print_info "Removed frontend output file"
       fi
       
+      update_state "frontend" false '{"url": ""}'
       print_success "Frontend cleaned up successfully"
     else
       print_error "Frontend cleanup failed"
@@ -164,6 +187,7 @@ if [ "$SKIP_FRONTEND" = false ]; then
     cd ../..
   else
     print_info "Frontend stack does not exist, skipping"
+    update_state "frontend" false '{"url": ""}'
   fi
 else
   print_warning "Skipping Frontend cleanup"
@@ -176,6 +200,7 @@ fi
 print_section "Step 2: Synthetic Data"
 print_info "Synthetic data lives in DynamoDB tables and will be cleaned up"
 print_info "when Backend Infrastructure is destroyed in Step 5."
+update_state "synthetic-data" false '{"location_count": 0, "customer_count": 0, "menu_item_count": 0, "order_count": 0}'
 
 ################################################################################
 # Step 3: Cleanup AgentCore Runtime (CDK)
@@ -184,12 +209,15 @@ print_info "when Backend Infrastructure is destroyed in Step 5."
 if [ "$SKIP_RUNTIME" = false ]; then
   print_section "Step 3: Cleaning up AgentCore Runtime (CDK)"
   
+  RUNTIME_DEPLOYED=$(is_deployed "agentcore-runtime")
+  
+  if [ "$RUNTIME_DEPLOYED" = "false" ]; then
+    print_info "Runtime not marked as deployed in state, checking CloudFormation..."
+  fi
+  
   cd backend/agentcore-runtime/cdk
   
-  print_info "Destroying AgentCore Runtime stacks..."
-  
   # RuntimeStack first (depends on InfraStack)
-  print_info "Checking if RuntimeStack exists..."
   RUNTIME_STACK_EXISTS=$(aws cloudformation describe-stacks \
     --stack-name AgentCoreRuntimeStack \
     --region us-east-1 \
@@ -223,7 +251,6 @@ if [ "$SKIP_RUNTIME" = false ]; then
   sleep 3
   
   # InfraStack second
-  print_info "Checking if InfraStack exists..."
   INFRA_STACK_EXISTS=$(aws cloudformation describe-stacks \
     --stack-name AgentCoreInfraStack \
     --region us-east-1 \
@@ -260,6 +287,8 @@ if [ "$SKIP_RUNTIME" = false ]; then
     print_info "Removed runtime output file"
   fi
   
+  update_state "agentcore-runtime" false '{"stacks": []}'
+  
   cd ../../..
 else
   print_warning "Skipping AgentCore Runtime cleanup"
@@ -272,9 +301,13 @@ fi
 if [ "$SKIP_GATEWAY" = false ]; then
   print_section "Step 4: Cleaning up AgentCore Gateway (CDK)"
   
-  cd backend/agentcore-gateway/cdk
+  GATEWAY_DEPLOYED=$(is_deployed "agentcore-gateway")
   
-  print_info "Destroying AgentCore Gateway stack..."
+  if [ "$GATEWAY_DEPLOYED" = "false" ]; then
+    print_info "Gateway not marked as deployed in state, checking CloudFormation..."
+  fi
+  
+  cd backend/agentcore-gateway/cdk
   
   GATEWAY_STACK_EXISTS=$(aws cloudformation describe-stacks \
     --stack-name QSR-AgentCoreGatewayStack \
@@ -316,6 +349,7 @@ if [ "$SKIP_GATEWAY" = false ]; then
         print_info "Removed gateway output file"
       fi
       
+      update_state "agentcore-gateway" false '{"gateway_id": ""}'
       print_success "AgentCore Gateway cleaned up successfully"
     else
       print_error "Gateway stack destruction failed"
@@ -324,6 +358,7 @@ if [ "$SKIP_GATEWAY" = false ]; then
     fi
   else
     print_info "Gateway stack does not exist, skipping"
+    update_state "agentcore-gateway" false '{"gateway_id": ""}'
   fi
   
   cd ../../..
@@ -338,37 +373,57 @@ fi
 if [ "$SKIP_BACKEND_INFRA" = false ]; then
   print_section "Step 5: Cleaning up Backend Infrastructure (CDK)"
   
-  cd backend/backend-infrastructure
+  BACKEND_DEPLOYED=$(is_deployed "backend-infrastructure")
   
-  print_info "Destroying Backend Infrastructure stacks..."
-  print_warning "This will delete DynamoDB tables (including synthetic data), Lambda functions, API Gateway, Cognito, etc."
-  
-  if [ "$FORCE" = true ]; then
-    cdk destroy --all --force
-  else
-    cdk destroy --all
+  if [ "$BACKEND_DEPLOYED" = "false" ]; then
+    print_info "Backend not marked as deployed in state, checking CloudFormation..."
   fi
   
-  if [ $? -eq 0 ]; then
-    print_success "Backend Infrastructure cleaned up successfully"
+  # Check if any backend stack exists
+  ANY_BACKEND_STACK=$(aws cloudformation describe-stacks \
+    --stack-name QSR-DynamoDBStack \
+    --region us-east-1 \
+    --query 'Stacks[0].StackName' \
+    --output text 2>/dev/null || echo "")
+  
+  if [ -n "$ANY_BACKEND_STACK" ]; then
+    cd backend/backend-infrastructure
     
-    print_info "Waiting for all backend stacks to be deleted..."
-    for stack in QSR-CognitoStack QSR-ApiGatewayStack QSR-LambdaStack QSR-LocationStack QSR-DynamoDBStack; do
-      print_info "  Waiting for $stack..."
-      aws cloudformation wait stack-delete-complete --stack-name "$stack" --region us-east-1 2>/dev/null || true
-    done
+    print_info "Destroying Backend Infrastructure stacks..."
+    print_warning "This will delete DynamoDB tables (including synthetic data), Lambda functions, API Gateway, Cognito, etc."
     
-    if [ -f "../../$OUTPUTS_DIR/backend-infrastructure.json" ]; then
-      rm "../../$OUTPUTS_DIR/backend-infrastructure.json"
-      print_info "Removed backend infrastructure output file"
+    if [ "$FORCE" = true ]; then
+      cdk destroy --all --force
+    else
+      cdk destroy --all
     fi
+    
+    if [ $? -eq 0 ]; then
+      print_success "Backend Infrastructure cleaned up successfully"
+      
+      print_info "Waiting for all backend stacks to be deleted..."
+      for stack in QSR-CognitoStack QSR-ApiGatewayStack QSR-LambdaStack QSR-LocationStack QSR-DynamoDBStack; do
+        print_info "  Waiting for $stack..."
+        aws cloudformation wait stack-delete-complete --stack-name "$stack" --region us-east-1 2>/dev/null || true
+      done
+      
+      if [ -f "../../$OUTPUTS_DIR/backend-infrastructure.json" ]; then
+        rm "../../$OUTPUTS_DIR/backend-infrastructure.json"
+        print_info "Removed backend infrastructure output file"
+      fi
+      
+      update_state "backend-infrastructure" false '{"stacks": [], "password_changed": false}'
+    else
+      print_error "Backend Infrastructure cleanup failed"
+      if [ "$CONTINUE_ON_ERROR" = false ]; then cd ../..; exit 1; fi
+      OVERALL_SUCCESS=false
+    fi
+    
+    cd ../..
   else
-    print_error "Backend Infrastructure cleanup failed"
-    if [ "$CONTINUE_ON_ERROR" = false ]; then cd ../..; exit 1; fi
-    OVERALL_SUCCESS=false
+    print_info "Backend infrastructure stacks do not exist, skipping"
+    update_state "backend-infrastructure" false '{"stacks": [], "password_changed": false}'
   fi
-  
-  cd ../..
 else
   print_warning "Skipping Backend Infrastructure cleanup"
 fi
@@ -379,10 +434,12 @@ fi
 
 print_section "Cleanup Complete!"
 
-# Remove state file
-if [ "$DRY_RUN" = false ] && [ -f "$STATE_FILE" ]; then
-  rm "$STATE_FILE"
+# Remove state file only if everything succeeded
+if [ "$DRY_RUN" = false ] && [ "$OVERALL_SUCCESS" = true ] && [ -f "$STATE_FILE_ABS" ]; then
+  rm "$STATE_FILE_ABS"
   print_info "Removed deployment state file"
+elif [ "$DRY_RUN" = false ] && [ "$OVERALL_SUCCESS" = false ]; then
+  print_warning "State file preserved — re-run cleanup to finish remaining components"
 fi
 
 # Remove outputs directory if empty
@@ -408,6 +465,6 @@ elif [ "$OVERALL_SUCCESS" = true ]; then
 else
   print_warning "Some resources may not have been cleaned up. Check the errors above."
   echo ""
-  print_info "You can retry with --ignore-missing-resources flag to continue on errors"
+  print_info "Re-run ./cleanup-all.sh to resume — already-cleaned components will be skipped."
   exit 1
 fi
