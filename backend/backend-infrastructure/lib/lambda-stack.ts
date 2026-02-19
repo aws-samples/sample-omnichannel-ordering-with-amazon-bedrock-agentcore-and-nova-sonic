@@ -24,6 +24,8 @@ export class LambdaStack extends cdk.Stack {
     getPreviousOrders: lambda.Function;
     getMenu: lambda.Function;
     addToCart: lambda.Function;
+    getCart: lambda.Function;
+    updateCart: lambda.Function;
     placeOrder: lambda.Function;
     getNearestLocations: lambda.Function;
     findLocationAlongRoute: lambda.Function;
@@ -35,7 +37,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for GetCustomerProfile
     const getCustomerProfile = new lambda.Function(this, 'GetCustomerProfile', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/get-customer-profile')),
       environment: {
@@ -51,7 +53,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for GetPreviousOrders
     const getPreviousOrders = new lambda.Function(this, 'GetPreviousOrders', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/get-previous-orders')),
       environment: {
@@ -67,7 +69,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for GetMenu
     const getMenu = new lambda.Function(this, 'GetMenu', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/get-menu')),
       environment: {
@@ -83,7 +85,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for AddToCart
     const addToCart = new lambda.Function(this, 'AddToCart', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/add-to-cart')),
       environment: {
@@ -99,9 +101,39 @@ export class LambdaStack extends cdk.Stack {
     props.tables.menu.grantReadData(addToCart);
     props.tables.carts.grantReadWriteData(addToCart);
 
+    // Lambda function for GetCart
+    const getCart = new lambda.Function(this, 'GetCart', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/get-cart')),
+      environment: {
+        CARTS_TABLE_NAME: props.tables.carts.tableName,
+      },
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      description: 'Get current cart contents for a customer. Returns items, quantities, prices, subtotal, and location. Requires customerId parameter.',
+    });
+
+    props.tables.carts.grantReadData(getCart);
+
+    // Lambda function for UpdateCart
+    const updateCart = new lambda.Function(this, 'UpdateCart', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/update-cart')),
+      environment: {
+        CARTS_TABLE_NAME: props.tables.carts.tableName,
+      },
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      description: 'Update cart: clear all items, remove a specific item, update item quantity, or change pickup location. Requires customerId and action in request body.',
+    });
+
+    props.tables.carts.grantReadWriteData(updateCart);
+
     // Lambda function for PlaceOrder
     const placeOrder = new lambda.Function(this, 'PlaceOrder', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/place-order')),
       environment: {
@@ -121,7 +153,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for GetNearestLocations
     const getNearestLocations = new lambda.Function(this, 'GetNearestLocations', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/get-nearest-locations')),
       environment: {
@@ -144,7 +176,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for FindLocationAlongRoute
     const findLocationAlongRoute = new lambda.Function(this, 'FindLocationAlongRoute', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/find-location-along-route')),
       environment: {
@@ -167,7 +199,7 @@ export class LambdaStack extends cdk.Stack {
 
     // Lambda function for GeocodeAddress
     const geocodeAddress = new lambda.Function(this, 'GeocodeAddress', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/geocode-address')),
       environment: {
@@ -190,6 +222,8 @@ export class LambdaStack extends cdk.Stack {
       getPreviousOrders,
       getMenu,
       addToCart,
+      getCart,
+      updateCart,
       placeOrder,
       getNearestLocations,
       findLocationAlongRoute,
@@ -219,6 +253,16 @@ export class LambdaStack extends cdk.Stack {
       value: addToCart.functionArn,
       description: 'ARN of AddToCart Lambda function',
       exportName: 'AddToCartFunctionArn',
+    });
+
+    new cdk.CfnOutput(this, 'GetCartFunctionArn', {
+      value: getCart.functionArn,
+      description: 'ARN of GetCart Lambda function',
+    });
+
+    new cdk.CfnOutput(this, 'UpdateCartFunctionArn', {
+      value: updateCart.functionArn,
+      description: 'ARN of UpdateCart Lambda function',
     });
 
     new cdk.CfnOutput(this, 'PlaceOrderFunctionArn', {
@@ -253,6 +297,8 @@ export class LambdaStack extends cdk.Stack {
       getPreviousOrders,
       getMenu,
       addToCart,
+      getCart,
+      updateCart,
       placeOrder,
       getNearestLocations,
       findLocationAlongRoute,
