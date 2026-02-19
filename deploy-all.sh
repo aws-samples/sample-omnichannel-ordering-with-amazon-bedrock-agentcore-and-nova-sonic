@@ -703,7 +703,7 @@ fi
 print_info "State saved to: $STATE_FILE"
 print_info "Outputs saved to: $OUTPUTS_DIR/"
 echo ""
-print_info "Next steps:"
+print_info "For cleaning up and troubleshooting:"
 echo "  • Copy and paste one of the test commands above"
 echo "  • Run './status.sh' to view deployment status"
 echo "  • Run './deploy-all.sh' again to update (idempotent)"
