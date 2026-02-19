@@ -1,23 +1,8 @@
-# Python
+# Python (test client)
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 venv/
 env/
-*.egg-info/
-dist/
-build/
-
-# Configuration (user-specific)
-scripts/config.yaml
-
-# Deployment outputs (contains resource IDs)
-scripts/deployment-outputs.json
-
-# Lambda package
-lambda/request-interceptor.zip
 
 # IDE
 .vscode/
@@ -32,21 +17,3 @@ Thumbs.db
 
 # Environment variables
 .env
-
-# Request Interceptor Lambda build artifacts
-lib/request-interceptor/node_modules/
-lib/request-interceptor/*.js
-lib/request-interceptor/*.d.ts
-!lib/request-interceptor/package.json
-!lib/request-interceptor/tsconfig.json
-
-# IDE
-.idea
-.vscode
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
