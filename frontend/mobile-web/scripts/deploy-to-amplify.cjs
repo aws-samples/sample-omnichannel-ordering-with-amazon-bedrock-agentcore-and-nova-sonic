@@ -41,7 +41,7 @@ function info(message) {
 }
 
 // Read Amplify App ID from CDK outputs
-const outputsPath = path.join(__dirname, '../../cdk-outputs/frontend.json');
+const outputsPath = path.join(__dirname, '../../../cdk-outputs/frontend.json');
 
 if (!fs.existsSync(outputsPath)) {
   error('CDK outputs not found. Please run CDK deploy first.');
@@ -67,7 +67,7 @@ try {
   }
 
   // Get region from backend outputs
-  const backendOutputsPath = path.join(__dirname, '../../cdk-outputs/backend-infrastructure.json');
+  const backendOutputsPath = path.join(__dirname, '../../../cdk-outputs/backend-infrastructure.json');
   if (fs.existsSync(backendOutputsPath)) {
     const backendOutputs = JSON.parse(fs.readFileSync(backendOutputsPath, 'utf8'));
     region = (backendOutputs['QSR-CognitoStack'] || {}).Region || 'us-east-1';

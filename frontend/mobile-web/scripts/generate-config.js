@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const CDK_OUTPUTS_DIR = join(__dirname, '../../cdk-outputs');
+const CDK_OUTPUTS_DIR = join(__dirname, '../../../cdk-outputs');
 const ENV_FILE = join(__dirname, '../.env.local');
 
 console.log('🔧 Generating frontend configuration from CDK outputs...\n');

@@ -377,7 +377,7 @@ if [ "$WITH_FRONTEND" = true ]; then
   SHOULD_DEPLOY_FRONTEND=true
 elif [ "$SKIP_FRONTEND" = false ]; then
   # Check if frontend directory exists
-  if [ -d "frontend" ]; then
+  if [ -d "frontend/mobile-web" ]; then
     print_section "Frontend (Optional)"
     echo ""
     print_info "Would you like to deploy the frontend application?"
@@ -392,20 +392,20 @@ elif [ "$SKIP_FRONTEND" = false ]; then
 fi
 
 if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
-  if [ ! -d "frontend" ]; then
+  if [ ! -d "frontend/mobile-web" ]; then
     print_warning "Frontend directory not found, skipping..."
   else
     print_section "Deploying Frontend to AWS Amplify"
     
     # Step 1: Deploy CDK stack (creates Amplify App)
-    cd frontend/cdk
+    cd frontend/mobile-web/cdk
     
     print_info "Installing CDK dependencies..."
     npm install > /dev/null 2>&1
     
     print_info "Creating Amplify App via CDK..."
     cdk deploy --require-approval never \
-      --outputs-file "../../$OUTPUTS_DIR/frontend.json"
+      --outputs-file "../../../$OUTPUTS_DIR/frontend.json"
     
     cd ..
     
@@ -416,13 +416,13 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     print_info "Deploying frontend code to Amplify..."
     npm run deploy:amplify
     
-    AMPLIFY_URL=$(json_val "../$OUTPUTS_DIR/frontend.json" "QSR-FrontendStack" "AmplifyAppUrl")
+    AMPLIFY_URL=$(json_val "../../$OUTPUTS_DIR/frontend.json" "QSR-FrontendStack" "AmplifyAppUrl")
     
     update_state "frontend" true "{\"url\": \"$AMPLIFY_URL\"}"
     print_success "Frontend deployed to Amplify"
     print_info "Frontend URL: $AMPLIFY_URL"
     
-    cd ..
+    cd ../..
   fi
 fi
 

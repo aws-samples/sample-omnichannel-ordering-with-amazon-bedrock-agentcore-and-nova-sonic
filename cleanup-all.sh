@@ -155,7 +155,7 @@ if [ "$SKIP_FRONTEND" = false ]; then
   if [ -n "$FRONTEND_STACK_EXISTS" ]; then
     print_info "Frontend stack found, destroying..."
     
-    cd frontend/cdk
+    cd frontend/mobile-web/cdk
     
     if [ "$FORCE" = true ]; then
       cdk destroy --force
@@ -171,8 +171,8 @@ if [ "$SKIP_FRONTEND" = false ]; then
         --stack-name QSR-FrontendStack \
         --region us-east-1 2>/dev/null || true
       
-      if [ -f "../../$OUTPUTS_DIR/frontend.json" ]; then
-        rm "../../$OUTPUTS_DIR/frontend.json"
+      if [ -f "../../../$OUTPUTS_DIR/frontend.json" ]; then
+        rm "../../../$OUTPUTS_DIR/frontend.json"
         print_info "Removed frontend output file"
       fi
       
@@ -180,11 +180,11 @@ if [ "$SKIP_FRONTEND" = false ]; then
       print_success "Frontend cleaned up successfully"
     else
       print_error "Frontend cleanup failed"
-      if [ "$CONTINUE_ON_ERROR" = false ]; then cd ../..; exit 1; fi
+      if [ "$CONTINUE_ON_ERROR" = false ]; then cd ../../..; exit 1; fi
       OVERALL_SUCCESS=false
     fi
     
-    cd ../..
+    cd ../../..
   else
     print_info "Frontend stack does not exist, skipping"
     update_state "frontend" false '{"url": ""}'
