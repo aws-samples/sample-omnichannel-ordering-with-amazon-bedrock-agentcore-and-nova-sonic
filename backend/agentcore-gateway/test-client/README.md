@@ -314,6 +314,6 @@ For issues or questions:
 
 ## Related Documentation
 
-- [AgentCore Gateway Deployment Guide](../DEPLOYMENT.md)
 - [AgentCore Gateway README](../README.md)
+- [CDK Developer Notes](../cdk/DEVELOPER_NOTES.md)
 - [Backend API Documentation](../../backend-infrastructure/README.md)

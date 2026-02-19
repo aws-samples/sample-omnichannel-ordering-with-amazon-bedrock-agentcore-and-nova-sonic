@@ -36,25 +36,18 @@ This project deploys an AWS Bedrock AgentCore Gateway that exposes a Backend API
 ## Key Features
 
 - **IAM-Based Authorization**: Secure communication using AWS Signature Version 4
-- **Direct Communication**: No Lambda interceptors needed - Gateway communicates directly with API Gateway
-- **Exception-Level Debugging**: Detailed exception logging enabled for troubleshooting
+- **Direct Communication**: Gateway communicates directly with API Gateway — no interceptors needed
+- **CDK Deployment**: Fully automated via CDK with a Node.js Custom Resource Lambda
 - **Dynamic Tool Discovery**: Automatically discovers all API Gateway endpoints as MCP tools
-- **Automatic Policy Updates**: Updates IAM role policies when API Gateway changes
-- **Test Client**: Comprehensive test client for verifying connectivity, tool listing, and tool calling
+- **In-Place Updates**: Adding new API endpoints triggers a gateway target update on the next deploy
 
 ## Prerequisites
 
 1. **Backend Infrastructure Deployed**: QSR-ApiGatewayStack must be deployed
-2. **Python 3.9+**: Required for deployment scripts
+2. **Node.js 20+**: Required for CDK
 3. **AWS CLI Configured**: With appropriate permissions
-4. **Required IAM Permissions**:
-   - Create and manage IAM roles and policies
-   - Create and manage AgentCore Gateways and Targets
-   - Read API Gateway configurations
 
 ## Quick Start
-
-### Option 1: CDK Deployment (Recommended)
 
 The gateway is deployed via CDK as part of the main deployment script:
 
@@ -71,19 +64,9 @@ npm install
 cdk deploy --context apiGatewayId=<your-api-gateway-id>
 ```
 
-### Option 2: Python Scripts (Reference)
-
-The original Python deployment scripts are kept in `scripts/` for reference:
-
-```bash
-cd backend/agentcore-gateway
-pip install -r scripts/requirements.txt
-python scripts/deploy-gateway.py --config scripts/config.yaml
-```
-
 ## Testing the Gateway
 
-After deployment, you can test the gateway using the provided test client:
+After deployment, test the gateway using the provided test client:
 
 ```bash
 cd test-client
@@ -91,68 +74,20 @@ cd test-client
 # Install dependencies
 pip install -r requirements.txt
 
-# Test connection
-python test_gateway.py --gateway-url <gateway-url> --test connection
-
 # List all available tools
-python test_gateway.py --gateway-url <gateway-url> --test list-tools
+python test_gateway.py --gateway-url <gateway-url> --list-tools
 
 # Call a specific tool
-python test_gateway.py --gateway-url <gateway-url> --test call-tool \
-  --tool-name qsr-backend-api___GetMenu \
-  --tool-args '{"locationId": "loc-van-alstyne"}'
-
-# Or use the quick test script (automatically reads gateway URL from deployment outputs)
-./quick-test.sh
+python test_gateway.py --gateway-url <gateway-url> \
+  --tool-name get_menu --tool-args '{}'
 ```
 
 See [test-client/README.md](test-client/README.md) for detailed testing documentation.
 
-## Exception-Level Debugging
-
-The gateway is configured with exception-level debugging enabled (`exceptionLevel='DEBUG'`), which provides detailed exception information in CloudWatch Logs for troubleshooting. This helps diagnose issues with:
-
-- Tool discovery and invocation
-- API Gateway communication
-- IAM authorization
-- MCP protocol errors
-
-To view debug logs:
-
-```bash
-# Get gateway ID from deployment outputs
-GATEWAY_ID=$(cat scripts/deployment-outputs.json | jq -r '.gateway_id')
-
-# View CloudWatch logs
-aws logs tail /aws/bedrock-agentcore/gateway/$GATEWAY_ID --follow
-```
-
-## Configuration
-
-All resource IDs are passed as parameters - nothing is hardcoded:
-
-- **API Gateway ID**: From config.yaml or `--api-gateway-id` CLI arg
-- **Region**: From config.yaml or `--region` CLI arg
-- **Gateway Name**: From config.yaml or `--gateway-name` CLI arg
-
-## CLI Options
-
-```bash
-python scripts/deploy-gateway.py \
-  --config scripts/config.yaml \
-  --api-gateway-id hj65he2og8 \
-  --stage prod \
-  --region us-east-1 \
-  --gateway-name my-gateway \
-  --output-file my-outputs.json
-```
-
 ## Cleanup
 
-To delete the gateway and all associated resources:
-
 ```bash
-# Via CDK (recommended)
+# Via CDK
 cd cdk
 cdk destroy --context apiGatewayId=<your-api-gateway-id>
 ```
@@ -163,21 +98,16 @@ Or use the main cleanup script from the project root:
 ./cleanup-all.sh
 ```
 
-## Documentation
-
-- **[DEPLOYMENT.md](DEPLOYMENT.md)**: Detailed deployment guide
-- **[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md)**: Technical implementation details
-
 ## Implementation
 
-The gateway is deployed as a CDK stack with a Node.js Custom Resource Lambda that:
+The gateway is deployed as a CDK stack (`cdk/`) with a Node.js Custom Resource Lambda that:
 - Creates an IAM service role for the gateway
 - Fetches the OpenAPI schema from API Gateway
 - Parses endpoints into MCP tool filters and overrides
-- Creates the AgentCore Gateway and target via the AWS SDK
+- Creates/updates the AgentCore Gateway and target
 - Handles full lifecycle (Create/Update/Delete)
 
-The Python scripts in `scripts/` are kept as reference for the original boto3 implementation.
+See [cdk/DEVELOPER_NOTES.md](cdk/DEVELOPER_NOTES.md) for implementation details and workarounds.
 
 ## Security
 
@@ -185,11 +115,3 @@ The Python scripts in `scripts/` are kept as reference for the original boto3 im
 - No credentials stored in configuration files
 - IAM policies follow principle of least privilege
 - Gateway role policy automatically updates with correct API Gateway ARN
-
-## Support
-
-For issues or questions:
-1. Check [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) for technical details
-2. Review CloudWatch Logs for Gateway operations
-3. Contact the Backend Infrastructure team for API Gateway issues
-4. Contact the AgentCore Runtime team for integration issues

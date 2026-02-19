@@ -13,6 +13,8 @@ export interface ApiGatewayStackProps extends cdk.StackProps {
     getPreviousOrders: lambda.Function;
     getMenu: lambda.Function;
     addToCart: lambda.Function;
+    getCart: lambda.Function;
+    updateCart: lambda.Function;
     placeOrder: lambda.Function;
     getNearestLocations: lambda.Function;
     findLocationAlongRoute: lambda.Function;
@@ -200,6 +202,22 @@ export class ApiGatewayStack extends cdk.Stack {
 
     const addToCartIntegration = new apigateway.LambdaIntegration(
       props.lambdaFunctions.addToCart,
+      {
+        proxy: true,
+        allowTestInvoke: true,
+      }
+    );
+
+    const getCartIntegration = new apigateway.LambdaIntegration(
+      props.lambdaFunctions.getCart,
+      {
+        proxy: true,
+        allowTestInvoke: true,
+      }
+    );
+
+    const updateCartIntegration = new apigateway.LambdaIntegration(
+      props.lambdaFunctions.updateCart,
       {
         proxy: true,
         allowTestInvoke: true,
@@ -399,6 +417,37 @@ export class ApiGatewayStack extends cdk.Stack {
             'application/json': errorResponseModel,
           },
         },
+      ],
+    });
+
+    cart.addMethod('GET', getCartIntegration, {
+      authorizationType: apigateway.AuthorizationType.IAM,
+      operationName: 'GetCart',
+      requestParameters: {
+        'method.request.querystring.customerId': true,
+      },
+      methodResponses: [
+        {
+          statusCode: '200',
+          responseModels: { 'application/json': successResponseModel },
+          responseParameters: { 'method.response.header.Access-Control-Allow-Origin': true },
+        },
+        { statusCode: '400', responseModels: { 'application/json': errorResponseModel } },
+        { statusCode: '500', responseModels: { 'application/json': errorResponseModel } },
+      ],
+    });
+
+    cart.addMethod('PUT', updateCartIntegration, {
+      authorizationType: apigateway.AuthorizationType.IAM,
+      operationName: 'UpdateCart',
+      methodResponses: [
+        {
+          statusCode: '200',
+          responseModels: { 'application/json': successResponseModel },
+          responseParameters: { 'method.response.header.Access-Control-Allow-Origin': true },
+        },
+        { statusCode: '400', responseModels: { 'application/json': errorResponseModel } },
+        { statusCode: '500', responseModels: { 'application/json': errorResponseModel } },
       ],
     });
 

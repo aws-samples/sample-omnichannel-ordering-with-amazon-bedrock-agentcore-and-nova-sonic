@@ -152,11 +152,13 @@ exports.handler = async (event) => {
 
       console.log('[DEBUG] New cart created successfully');
 
+      const subtotal = itemsAdded.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ 
-          cart: newCart,
+          cart: { ...newCart, itemCount: itemsAdded.length, subtotal: parseFloat(subtotal.toFixed(2)) },
           itemsAdded,
           itemsFailed,
           message: `Added ${itemsAdded.length} item(s)${itemsFailed.length > 0 ? `, ${itemsFailed.length} item(s) failed` : ''}`
@@ -202,11 +204,13 @@ exports.handler = async (event) => {
 
     console.log('[DEBUG] Cart updated successfully');
 
+    const subtotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ 
-        cart: updatedCart.Attributes,
+        cart: { ...updatedCart.Attributes, itemCount: updatedItems.length, subtotal: parseFloat(subtotal.toFixed(2)) },
         itemsAdded,
         itemsFailed,
         message: `Added ${itemsAdded.length} item(s)${itemsFailed.length > 0 ? `, ${itemsFailed.length} item(s) failed` : ''}`

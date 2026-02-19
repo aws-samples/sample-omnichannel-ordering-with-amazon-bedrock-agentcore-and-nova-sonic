@@ -96,6 +96,8 @@ export class CdkStack extends cdk.Stack {
     });
 
     // Custom Resource
+    // DeployTimestamp forces CloudFormation to trigger an Update on every deploy,
+    // ensuring the target is refreshed with the latest API Gateway schema
     const gateway = new cdk.CustomResource(this, 'AgentCoreGateway', {
       serviceToken: provider.serviceToken,
       properties: {
@@ -104,7 +106,8 @@ export class CdkStack extends cdk.Stack {
         ApiGatewayId: props.apiGatewayId,
         Stage: stage,
         Region: cdk.Stack.of(this).region,
-        AccountId: cdk.Stack.of(this).account
+        AccountId: cdk.Stack.of(this).account,
+        DeployTimestamp: new Date().toISOString(),
       }
     });
 

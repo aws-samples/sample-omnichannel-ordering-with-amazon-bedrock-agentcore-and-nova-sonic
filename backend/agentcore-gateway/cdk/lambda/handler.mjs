@@ -17,6 +17,7 @@ import {
   GetGatewayTargetCommand,
   DeleteGatewayTargetCommand,
   ListGatewayTargetsCommand,
+  UpdateGatewayTargetCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 
 import {
@@ -71,10 +72,23 @@ export async function handler(event, context) {
 
     } else if (event.RequestType === 'Update') {
       const gatewayId = event.PhysicalResourceId || 'not-created';
-      const gatewayUrl = await getGatewayUrl(gatewayId);
+      const result = await updateGateway(gatewayId, props);
       return {
         PhysicalResourceId: gatewayId,
-        Data: { GatewayId: gatewayId, GatewayUrl: gatewayUrl },
+        Data: {
+          GatewayId: result.gatewayId,
+          GatewayUrl: result.gatewayUrl,
+          GatewayArn: result.gatewayArn,
+          GatewayRoleArn: result.gatewayRoleArn,
+          TargetId: result.targetId,
+          ApiGatewayId: result.apiGatewayId,
+          ApiGatewayStage: result.apiGatewayStage,
+          Region: result.region,
+          AccountId: result.accountId,
+          DeploymentTimestamp: result.deploymentTimestamp,
+          ToolFiltersCount: String(result.toolFiltersCount),
+          ToolOverridesCount: String(result.toolOverridesCount),
+        },
       };
 
     } else if (event.RequestType === 'Delete') {
@@ -208,6 +222,112 @@ async function createGateway(props) {
 
   const gatewayArn = `arn:aws:bedrock:${region}:${accountId}:agent-gateway/${gatewayId}`;
   console.log(`Gateway deployment complete: ${gatewayUrl}`);
+
+  return {
+    gatewayId,
+    gatewayUrl,
+    gatewayArn,
+    gatewayRoleArn: roleArn,
+    targetId,
+    apiGatewayId,
+    apiGatewayStage: stage,
+    region,
+    accountId,
+    deploymentTimestamp: new Date().toISOString(),
+    toolFiltersCount: toolFilters.length,
+    toolOverridesCount: toolOverrides.length,
+  };
+}
+
+// ─── Update Gateway (delete target + recreate with fresh schema) ─────────────
+
+async function updateGateway(gatewayId, props) {
+  const apiGatewayId = props.ApiGatewayId;
+  const stage = props.Stage;
+  const region = props.Region;
+  const accountId = props.AccountId;
+  const gatewayName = props.GatewayName;
+
+  console.log(`Updating Gateway: ${gatewayId}`);
+
+  // Step 1: Get gateway details
+  const getResp = await agentcoreClient.send(new GetGatewayCommand({ gatewayIdentifier: gatewayId }));
+  const gatewayUrl = getResp.gatewayUrl;
+  const gatewayArn = `arn:aws:bedrock:${region}:${accountId}:agent-gateway/${gatewayId}`;
+  console.log(`Gateway URL: ${gatewayUrl}`);
+
+  // Step 2: Update IAM role policy (in case API Gateway ARN changed)
+  const roleName = `${gatewayName}-service-role`;
+  const apiGatewayArn = `arn:aws:execute-api:${region}:${accountId}:${apiGatewayId}/${stage}/*/*`;
+  const roleArn = await createGatewayServiceRole(roleName, apiGatewayArn);
+
+  // Step 3: Update existing target with fresh schema (or create if none exists)
+  console.log('Listing existing targets...');
+  const listResp = await agentcoreClient.send(new ListGatewayTargetsCommand({ gatewayIdentifier: gatewayId }));
+  const existingTargets = listResp.items || [];
+  console.log(`Found ${existingTargets.length} existing target(s)`);
+
+  // Step 4: Fetch fresh OpenAPI schema
+  console.log(`Fetching OpenAPI schema from API Gateway ${apiGatewayId}...`);
+  const schema = await fetchOpenApiSchema(apiGatewayId, stage);
+
+  // Step 5: Parse schema for tool filters and overrides
+  const { toolFilters, toolOverrides } = parseOpenApiSchema(schema);
+  console.log(`Generated ${toolFilters.length} tool filters and ${toolOverrides.length} tool overrides`);
+
+  const targetConfig = {
+    mcp: {
+      apiGateway: {
+        restApiId: apiGatewayId,
+        stage,
+        apiGatewayToolConfiguration: {
+          toolFilters,
+          toolOverrides,
+        },
+      },
+    },
+  };
+
+  let targetId;
+
+  if (existingTargets.length > 0) {
+    // Update existing target in place
+    const existingTarget = existingTargets[0];
+    targetId = existingTarget.targetId || existingTarget.targetIdentifier;
+    console.log(`Updating existing target: ${targetId}`);
+
+    await agentcoreClient.send(new UpdateGatewayTargetCommand({
+      gatewayIdentifier: gatewayId,
+      targetId,
+      name: 'qsr-backend-api',
+      description: 'QSR Backend API Lambda functions exposed as MCP tools',
+      targetConfiguration: targetConfig,
+      credentialProviderConfigurations: [
+        { credentialProviderType: 'GATEWAY_IAM_ROLE' },
+      ],
+    }));
+
+    console.log(`Target ${targetId} update initiated`);
+    await waitForTargetReady(gatewayId, targetId);
+  } else {
+    // No existing target — create new one
+    console.log('No existing target, creating new one...');
+    const targetResp = await agentcoreClient.send(new CreateGatewayTargetCommand({
+      gatewayIdentifier: gatewayId,
+      name: 'qsr-backend-api',
+      description: 'QSR Backend API Lambda functions exposed as MCP tools',
+      targetConfiguration: targetConfig,
+      credentialProviderConfigurations: [
+        { credentialProviderType: 'GATEWAY_IAM_ROLE' },
+      ],
+    }));
+
+    targetId = targetResp.targetIdentifier || targetResp.targetId;
+    console.log(`New target created: ${targetId}`);
+    await waitForTargetReady(gatewayId, targetId);
+  }
+
+  console.log(`Gateway update complete: ${gatewayUrl}`);
 
   return {
     gatewayId,
@@ -366,8 +486,14 @@ async function waitForTargetReady(gatewayId, targetId, maxAttempts = 30) {
       targetId,
     }));
     const status = resp.status || 'UNKNOWN';
+    console.log(`Target status: ${status} (attempt ${i + 1}/${maxAttempts})`);
     if (status === 'READY') { console.log('Target READY'); return; }
-    if (status === 'FAILED') throw new Error('Target creation failed');
+    if (status === 'FAILED') {
+      const reason = resp.statusReason || resp.failureReason || 'No reason provided';
+      console.error(`Target FAILED. Reason: ${reason}`);
+      console.error('Target response:', JSON.stringify(resp, null, 2).substring(0, 1000));
+      throw new Error(`Target creation failed: ${reason}`);
+    }
     await sleep(2000);
   }
   throw new Error('Target did not become READY in time');
