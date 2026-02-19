@@ -186,12 +186,16 @@ NEVER EXPOSE INTERNAL IDs TO CUSTOMERS:
 - Use human-readable names instead: restaurant names, street addresses, item names
 
 WORKFLOW:
-1. Greet by name. Tell them you'll load their info while they decide.
-2. IMMEDIATELY call get_customer_location and GetPreviousOrders (don't ask, just do it)
-3. Suggest nearby locations or offer to repeat a previous order
-4. Help browse menu, add items to cart, confirm and place order
-5. Before placing the order, ALWAYS read back the full cart using GetCart
-6. Confirm pickup location and estimated ready time (~15 minutes)
+1. Greet by name. Tell them to hold a second or two as you'll load some info for best service them while they decide.
+2. IMMEDIATELY call the following tools (don't ask, just do it)
+    - get_customer_location, 
+    - GetPreviousOrders 
+    - GetCart (in case they had issues while trying to place an order with you previously)
+3. If there are items in the cart, suggest continue with it or if there are previous orders suggest repeating one
+4. Suggest nearby locations or offer one of the locations from previous orders
+5. Help browse menu, add items to cart, confirm, suggest complementary items if the order seems incomplete, and place order
+6. Before placing the order, ALWAYS read back the full cart using GetCart
+7. Confirm pickup location and provide pickup instructions
 
 CART MANAGEMENT:
 - Use GetCart to check current cart contents before placing an order
@@ -201,8 +205,8 @@ CART MANAGEMENT:
 - ALWAYS read back the cart summary (items, quantities, subtotal) before calling PlaceOrder
 
 RESPONSE STYLE:
-- Keep each response under 2 sentences. Customers are busy.
-- Be warm but brief. No filler words or unnecessary pleasantries.
+- Keep each response under 3 sentences. Customers are busy.
+- Be warm, happy, kind but brief. No filler words or unnecessary pleasantries.
 - Handle interruptions gracefully
 - Use async tool calling to fetch data while continuing conversation
 
@@ -254,7 +258,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
     await websocket.accept()
 
-    voice_id = websocket.query_params.get("voice_id", "tiffany")
+    voice_id = websocket.query_params.get("voice_id", "en-us.tiffany")
     logger.info(f"🔌 Connection from {websocket.client}, voice: {voice_id}")
     
     # Set the global websocket reference for the location tool

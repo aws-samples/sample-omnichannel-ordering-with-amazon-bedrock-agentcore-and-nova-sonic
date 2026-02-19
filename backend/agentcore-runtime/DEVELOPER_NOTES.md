@@ -4,13 +4,10 @@ Lessons learned while building the voice ordering agent.
 
 ## Nova 2 Sonic — Language Bias
 
-Nova 2 Sonic tends to mix languages based on the customer's name. For example, a customer named "Sergio" triggers Spanish responses. The system prompt must include an explicit English-only directive as the FIRST instruction:
+Nova 2 Sonic tends to mix languages based on the customer's name. For example, a customer named "Sergio" triggers Spanish responses. Two mitigations are applied:
 
-```
-You are a friendly quick-service restaurant ordering assistant. Always respond in English regardless of the customer's name or background.
-```
-
-Placing this at the end of the prompt or as a secondary instruction is not effective — the model prioritizes earlier instructions.
+1. **System prompt**: An explicit English-only directive as the FIRST instruction
+2. **Voice ID**: Using a US English voice (e.g., `en-us.tiffany`) anchors the model to English output. This is the more effective of the two approaches — the voice selection strongly influences the model's language behavior.
 
 ## Nova 2 Sonic — Address Pronunciation
 

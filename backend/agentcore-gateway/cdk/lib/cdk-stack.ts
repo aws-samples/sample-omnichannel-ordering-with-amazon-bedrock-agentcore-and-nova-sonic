@@ -92,7 +92,10 @@ export class CdkStack extends cdk.Stack {
     // Custom Resource Provider
     const provider = new cr.Provider(this, 'GatewayProvider', {
       onEventHandler: gatewayHandlerFunction,
-      logRetention: 7 // Keep logs for 7 days
+      logGroup: new cdk.aws_logs.LogGroup(this, 'GatewayProviderLogs', {
+        retention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
     });
 
     // Custom Resource
