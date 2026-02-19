@@ -128,7 +128,7 @@ export function AuthComponent({ settings, onAuthSuccess }: AuthComponentProps) {
           userPoolClientId: settings.cognito.userPoolClientId,
           identityPoolId: settings.cognito.identityPoolId,
           loginWith: {
-            email: true
+            username: true
           }
         }
       }
@@ -151,15 +151,24 @@ export function AuthComponent({ settings, onAuthSuccess }: AuthComponentProps) {
         backgroundColor: 'white',
         borderRadius: '8px',
         padding: '30px',
-        boxShadow: '0 4px 20px rgba(228, 0, 43, 0.15)'
+        boxShadow: '0 4px 20px rgba(228, 0, 43, 0.15)',
+        overflow: 'hidden',
       }}>
-        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <h1 style={{ margin: '0 0 10px 0', color: '#E4002B' }}>🎙️ QSR Voice Ordering</h1>
-          <p style={{ margin: 0, color: '#666' }}>Sign in to start ordering</p>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <h1 style={{ margin: '0 0 10px 0', color: '#E4002B', fontSize: '24px' }}>🎙️ QSR Voice Ordering</h1>
+          <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>Sign in to start ordering</p>
         </div>
 
         <Authenticator
           hideSignUp={true}
+          formFields={{
+            signIn: {
+              username: {
+                label: 'Username or Email',
+                placeholder: 'Enter your username or email',
+              },
+            },
+          }}
           components={{
             SignIn: {
               Header() {

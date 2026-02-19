@@ -1,7 +1,3 @@
-* {
-  box-sizing: border-box;
-}
-
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -31,13 +27,20 @@ code {
   height: 100vh;
 }
 
-/* Amplify UI overrides - Zaxby's brand colors */
+/* Amplify UI overrides */
 [data-amplify-authenticator] {
   --amplify-components-authenticator-router-box-shadow: none;
   --amplify-components-authenticator-router-border-width: 0;
   --amplify-colors-brand-primary-80: #E4002B;
   --amplify-colors-brand-primary-90: #C40025;
   --amplify-colors-brand-primary-100: #E4002B;
+  --amplify-components-authenticator-container-width-max: 100%;
+}
+
+[data-amplify-authenticator] [data-amplify-router] {
+  box-shadow: none;
+  border: none;
+  background: transparent;
 }
 
 /* Pulse animation for tool execution indicator */
