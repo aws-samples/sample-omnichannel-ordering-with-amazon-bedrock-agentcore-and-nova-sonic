@@ -110,6 +110,7 @@ class AuthInterceptor:
         self.access_token = None
         self.first_message_processed = False
         self.user_info = None
+        self.auth_method = 'cognito'  # Default; updated during receive()
     
     async def receive(self):
         """
@@ -123,6 +124,7 @@ class AuthInterceptor:
         # Check if this is the first message and if it's an auth message
         if not self.first_message_processed and message.get('type') == 'auth':
             self.first_message_processed = True
+            self.auth_method = message.get('auth_method', 'cognito')
             self.access_token = message.get('access_token')
             
             if not self.access_token:

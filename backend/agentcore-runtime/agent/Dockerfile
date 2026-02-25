@@ -24,6 +24,8 @@ RUN pip install -r requirements.txt
 # Copy agent files
 COPY qsr_agent.py ./
 COPY jwt_auth.py ./
+COPY prompt_loader.py ./
+COPY prompts/ ./prompts/
 
 # Set environment variables
 ENV HOST="0.0.0.0"
