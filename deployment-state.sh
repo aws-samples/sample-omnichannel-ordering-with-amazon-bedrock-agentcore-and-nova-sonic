@@ -68,6 +68,7 @@ update_state() {
 const fs = require('fs');
 const state = JSON.parse(fs.readFileSync('$STATE_FILE_ABS', 'utf8'));
 state.last_updated = '$timestamp';
+if (!state.components['$component']) { state.components['$component'] = {}; }
 state.components['$component'].deployed = ('$deployed'.toLowerCase() === 'true');
 state.components['$component'].timestamp = '$timestamp';
 if ('$extra_data') {

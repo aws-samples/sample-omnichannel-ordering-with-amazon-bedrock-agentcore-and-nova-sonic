@@ -32,6 +32,18 @@ export class RuntimeStack extends cdk.Stack {
       constraintDescription: 'Must be a valid HTTPS URL',
     });
 
+    // Optional parameter for Sessions Table (set when deploying with --with-connect)
+    const sessionsTableName = new cdk.CfnParameter(this, 'SessionsTableName', {
+      type: 'String',
+      default: '',
+      description: 'Name of the DynamoDB Sessions Table for Connect auth. Leave empty to disable Connect auth.',
+    });
+
+    // Condition: true when SessionsTableName is provided
+    const hasSessionsTableName = new cdk.CfnCondition(this, 'HasSessionsTableName', {
+      expression: cdk.Fn.conditionNot(cdk.Fn.conditionEquals(sessionsTableName.valueAsString, '')),
+    });
+
     // Upload agent directory to S3 bucket for CodeBuild access
     const sourceDeployment = new s3deploy.BucketDeployment(this, 'AgentSourceDeployment', {
       sources: [s3deploy.Source.asset('../agent', {
@@ -226,6 +238,7 @@ export class RuntimeStack extends cdk.Stack {
         LOG_LEVEL: 'INFO',
         AGENTCORE_GATEWAY_URL: agentcoreGatewayUrl.valueAsString,
         IMAGE_VERSION: new Date().toISOString(),
+        SESSIONS_TABLE_NAME: cdk.Fn.conditionIf(hasSessionsTableName.logicalId, sessionsTableName.valueAsString, cdk.Aws.NO_VALUE).toString(),
       },
 
       tags: {

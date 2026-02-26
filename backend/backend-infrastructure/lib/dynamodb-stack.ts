@@ -33,6 +33,16 @@ export class DynamoDBStack extends cdk.Stack {
       },
     });
 
+    // Phone Number GSI — sparse index for caller lookup by phone number
+    customersTable.addGlobalSecondaryIndex({
+      indexName: 'PhoneNumberIndex',
+      partitionKey: {
+        name: 'phoneNumber',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Orders Table
     // PK: CUSTOMER#{customerId}, SK: ORDER#{orderId}#{timestamp}
     // GSI1: PK: LOCATION#{locationId}, SK: ORDER#{timestamp}

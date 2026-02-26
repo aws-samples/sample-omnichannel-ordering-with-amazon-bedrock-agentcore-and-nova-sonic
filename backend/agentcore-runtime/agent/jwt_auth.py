@@ -5,6 +5,8 @@ This module provides utilities for intercepting and validating JWT tokens
 sent as the first message over WebSocket connections.
 """
 import logging
+import os
+import time
 import boto3
 from botocore.exceptions import ClientError
 
@@ -125,25 +127,94 @@ class AuthInterceptor:
         if not self.first_message_processed and message.get('type') == 'auth':
             self.first_message_processed = True
             self.auth_method = message.get('auth_method', 'cognito')
-            self.access_token = message.get('access_token')
             
-            if not self.access_token:
-                logger.error("❌ No access token provided in auth message")
-                raise ValueError("Access token is required for authentication")
-            
-            # Verify the Access Token with AWS Cognito
-            try:
-                self.user_info = verify_access_token(self.access_token, region=self.region)
-                log_user_info(self.user_info)
-            except ValueError as e:
-                logger.error(f"❌ Token verification failed: {e}")
-                raise
+            if self.auth_method in ('connect', 'connect_anonymous'):
+                # Connect auth: verify DynamoDB session token
+                session_token = message.get('session_token')
+                if not session_token:
+                    logger.error("❌ No session token provided in Connect auth message")
+                    raise ValueError("Session token is required for Connect authentication")
+                
+                try:
+                    self.user_info = self._verify_session_token(session_token)
+                    log_user_info(self.user_info)
+                except ValueError as e:
+                    logger.error(f"❌ Session token verification failed: {e}")
+                    raise
+            else:
+                # Cognito auth: verify Access Token with AWS Cognito
+                self.access_token = message.get('access_token')
+                
+                if not self.access_token:
+                    logger.error("❌ No access token provided in auth message")
+                    raise ValueError("Access token is required for authentication")
+                
+                try:
+                    self.user_info = verify_access_token(self.access_token, region=self.region)
+                    log_user_info(self.user_info)
+                except ValueError as e:
+                    logger.error(f"❌ Token verification failed: {e}")
+                    raise
             
             # Get the next message (the actual first audio/data message)
             message = await self.websocket.receive_json()
         
         self.first_message_processed = True
         return message
+
+    def _verify_session_token(self, token):
+        """
+        Verify a Connect session token via atomic DynamoDB delete.
+
+        Reads and deletes the token in a single operation to enforce single-use.
+        Checks TTL to reject expired tokens. Populates self.auth_method from
+        the session record.
+
+        Args:
+            token (str): Session token UUID
+
+        Returns:
+            dict: User info with username, name, email, customerId
+
+        Raises:
+            ValueError: If table name not set, token not found, or token expired
+        """
+        sessions_table = os.environ.get('SESSIONS_TABLE_NAME')
+        if not sessions_table:
+            raise ValueError("Connect auth unavailable: SESSIONS_TABLE_NAME not set")
+
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(sessions_table)
+
+        # Atomic read-and-delete (single-use token)
+        try:
+            response = table.delete_item(
+                Key={'PK': f'SESSION#{token}'},
+                ReturnValues='ALL_OLD',
+                ConditionExpression='attribute_exists(PK)'
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                raise ValueError("Invalid or expired session token")
+            raise
+
+        item = response.get('Attributes')
+        if not item:
+            raise ValueError("Invalid or expired session token")
+
+        # Check TTL
+        if item.get('expiresAt', 0) < int(time.time()):
+            raise ValueError("Session token has expired")
+
+        # Update auth_method from session record
+        self.auth_method = item.get('authMethod', 'connect')
+
+        return {
+            'username': item.get('customerName', 'Guest'),
+            'name': item.get('customerName', 'Guest'),
+            'email': item.get('customerEmail', ''),
+            'customerId': item.get('customerId'),
+        }
 
 
 def create_auth_interceptor(websocket, region='us-east-1'):

@@ -6,6 +6,7 @@
 # Deletes all components of the QSR ordering system in reverse order:
 # 1. Frontend (Amplify CDK stack)
 # 2. Synthetic Data (cleaned with DynamoDB tables in step 5)
+# 2.5. Amazon Connect (if deployed)
 # 3. AgentCore Runtime (CDK)
 # 4. AgentCore Gateway (CDK)
 # 5. Backend Infrastructure (CDK)
@@ -111,6 +112,7 @@ if [ "$FORCE" != true ]; then
   echo ""
   echo "This includes:"
   echo "  - Frontend (Amplify App)"
+  echo "  - Amazon Connect (if deployed)"
   echo "  - AgentCore Runtime (CDK stacks)"
   echo "  - AgentCore Gateway and targets"
   echo "  - Backend Infrastructure (DynamoDB, Lambda, API Gateway, Cognito, etc.)"
@@ -201,6 +203,61 @@ print_section "Step 2: Synthetic Data"
 print_info "Synthetic data lives in DynamoDB tables and will be cleaned up"
 print_info "when Backend Infrastructure is destroyed in Step 5."
 update_state "synthetic-data" false '{"location_count": 0, "customer_count": 0, "menu_item_count": 0, "order_count": 0}'
+
+################################################################################
+# Step 2.5: Cleanup Amazon Connect (CDK) - before Runtime since Connect depends on it
+################################################################################
+
+print_section "Step 2.5: Cleaning up Amazon Connect (if deployed)"
+
+CONNECT_STACK_EXISTS=$(aws cloudformation describe-stacks \
+  --stack-name QSR-ConnectStack \
+  --region us-east-1 \
+  --query 'Stacks[0].StackName' \
+  --output text 2>/dev/null || echo "")
+
+if [ -n "$CONNECT_STACK_EXISTS" ]; then
+  print_info "Connect stack found, destroying..."
+
+  cd frontend/amazon-connect/cdk
+
+  # Install deps if needed (node_modules may not exist)
+  if [ ! -d "node_modules" ]; then
+    print_info "Installing CDK dependencies..."
+    npm install > /dev/null 2>&1
+  fi
+
+  if [ "$FORCE" = true ]; then
+    cdk destroy QSR-ConnectStack --force
+  else
+    cdk destroy QSR-ConnectStack
+  fi
+
+  if [ $? -eq 0 ]; then
+    print_success "Connect stack destroyed successfully"
+
+    print_info "Waiting for Connect stack deletion to complete..."
+    aws cloudformation wait stack-delete-complete \
+      --stack-name QSR-ConnectStack \
+      --region us-east-1 2>/dev/null || true
+
+    if [ -f "../../../$OUTPUTS_DIR/connect.json" ]; then
+      rm "../../../$OUTPUTS_DIR/connect.json"
+      print_info "Removed connect output file"
+    fi
+
+    update_state "amazon-connect" false '{"sessions_table": "", "phone_number": ""}'
+    print_success "Amazon Connect cleaned up successfully"
+  else
+    print_error "Connect stack cleanup failed"
+    if [ "$CONTINUE_ON_ERROR" = false ]; then cd ../../..; exit 1; fi
+    OVERALL_SUCCESS=false
+  fi
+
+  cd ../../..
+else
+  print_info "Connect stack does not exist, skipping"
+fi
 
 ################################################################################
 # Step 3: Cleanup AgentCore Runtime (CDK)

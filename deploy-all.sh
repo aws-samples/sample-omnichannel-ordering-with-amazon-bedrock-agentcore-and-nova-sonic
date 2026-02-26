@@ -26,7 +26,8 @@ SKIP_SYNTHETIC_DATA=false
 SKIP_FRONTEND=false
 WITH_SYNTHETIC_DATA=false
 WITH_FRONTEND=false
-FORCE_DEPLOY=false
+WITH_CONNECT=false
+FORCE_DEPLOY=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -39,7 +40,14 @@ while [[ $# -gt 0 ]]; do
     --with-synthetic-data) WITH_SYNTHETIC_DATA=true; shift ;;
     --skip-frontend) SKIP_FRONTEND=true; shift ;;
     --with-frontend) WITH_FRONTEND=true; shift ;;
-    --force-deploy) FORCE_DEPLOY=true; shift ;;
+    --with-connect) WITH_CONNECT=true; shift ;;
+    --force-deploy)
+      if [[ -n "$2" && "$2" != --* ]]; then
+        FORCE_DEPLOY="$2"; shift 2
+      else
+        FORCE_DEPLOY="all"; shift
+      fi
+      ;;
     --help)
       echo "Usage: ./deploy-all.sh [OPTIONS]"
       echo ""
@@ -50,12 +58,15 @@ while [[ $# -gt 0 ]]; do
       echo "Deployment Options:"
       echo "  --mode MODE                  Deployment mode: update (default) or fresh"
       echo "  --skip-preflight             Skip preflight checks"
-      echo "  --force-deploy               Force CDK deploy on all projects (bypass state checks)"
+      echo "  --force-deploy [COMPONENTS]  Force CDK deploy (bypass state checks)"
+      echo "                               No arg = all. Comma-separated list:"
+      echo "                               backend,acgateway,acagent,connect,webapp"
       echo ""
       echo "Optional Components:"
       echo "  --with-synthetic-data        Seed database with sample data (non-interactive)"
       echo "  --skip-synthetic-data        Skip synthetic data seeding (non-interactive)"
       echo "  --with-frontend              Deploy frontend application (non-interactive)"
+      echo "  --with-connect               Deploy Amazon Connect phone ordering channel"
       echo "  --skip-frontend              Skip frontend deployment (non-interactive)"
       echo ""
       echo "Other:"
@@ -76,6 +87,10 @@ while [[ $# -gt 0 ]]; do
       echo "  # Fresh deployment (clean redeploy)"
       echo "  ./deploy-all.sh --user-email you@example.com --user-name \"Your Name\" \\"
       echo "    --mode fresh"
+      echo ""
+      echo "  # Deploy with Amazon Connect phone ordering"
+      echo "  ./deploy-all.sh --user-email you@example.com --user-name \"Your Name\" \\"
+      echo "    --with-connect"
       exit 0
       ;;
     *) echo -e "${RED}Unknown option: $1${NC}"; exit 1 ;;
@@ -107,6 +122,16 @@ json_stdin() {
   node -e "let b='';process.stdin.on('data',c=>b+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(b)['$key']||'$default')}catch(e){console.log('$default')}})"
 }
 
+# Helper: check if a component should be force-deployed
+# Usage: should_force <component_name>
+# Component names: backend, acgateway, acagent, connect, webapp
+should_force() {
+  local component=$1
+  if [ -z "$FORCE_DEPLOY" ]; then return 1; fi
+  if [ "$FORCE_DEPLOY" = "all" ]; then return 0; fi
+  echo ",$FORCE_DEPLOY," | grep -q ",$component,"
+}
+
 # Run preflight checks
 if [ "$SKIP_PREFLIGHT" = false ]; then
   print_section "Running Preflight Checks"
@@ -135,7 +160,7 @@ print_section "Backend Infrastructure"
 
 BACKEND_DEPLOYED=$(is_deployed "backend-infrastructure")
 
-if [ "$FORCE_DEPLOY" = true ]; then
+if should_force backend; then
   print_info "Force deploy: redeploying backend infrastructure..."
   BACKEND_DEPLOYED="false"
 elif [ "$BACKEND_DEPLOYED" = "true" ]; then
@@ -192,7 +217,7 @@ print_section "AgentCore Gateway (CDK)"
 
 GATEWAY_DEPLOYED=$(is_deployed "agentcore-gateway")
 
-if [ "$FORCE_DEPLOY" = true ]; then
+if should_force acgateway; then
   print_info "Force deploy: redeploying gateway..."
   GATEWAY_DEPLOYED="false"
 elif [ "$GATEWAY_DEPLOYED" = "true" ]; then
@@ -250,7 +275,7 @@ print_section "AgentCore Runtime"
 
 RUNTIME_DEPLOYED=$(is_deployed "agentcore-runtime")
 
-if [ "$FORCE_DEPLOY" = true ]; then
+if should_force acagent; then
   print_info "Force deploy: redeploying runtime..."
   RUNTIME_DEPLOYED="false"
 elif [ "$RUNTIME_DEPLOYED" = "true" ]; then
@@ -297,6 +322,111 @@ if [ "$RUNTIME_DEPLOYED" = "false" ]; then
   cd ../../..
 else
   print_success "AgentCore Runtime up to date"
+fi
+
+################################################################################
+# Amazon Connect (Optional - Phone Ordering Channel)
+################################################################################
+
+if [ "$WITH_CONNECT" = true ]; then
+  print_section "Amazon Connect (Phone Ordering Channel)"
+
+  if [ ! -d "frontend/amazon-connect/cdk" ]; then
+    print_error "Connect CDK directory not found at frontend/amazon-connect/cdk"
+    exit 1
+  fi
+
+  CONNECT_DEPLOYED=$(is_deployed "amazon-connect")
+
+  if should_force connect; then
+    print_info "Force deploy: redeploying Connect stack..."
+    CONNECT_DEPLOYED="false"
+  elif [ "$CONNECT_DEPLOYED" = "true" ]; then
+    print_info "Connect already deployed, checking stack..."
+
+    if [ -n "$(stack_exists QSR-ConnectStack)" ]; then
+      print_success "Connect stack exists, updating..."
+    else
+      print_warning "Connect stack not found, redeploying..."
+      CONNECT_DEPLOYED="false"
+    fi
+  fi
+
+  if [ "$CONNECT_DEPLOYED" = "false" ]; then
+    cd frontend/amazon-connect/cdk
+
+    print_info "Installing CDK dependencies..."
+    npm install > /dev/null 2>&1
+
+    print_info "Deploying QSR-ConnectStack..."
+    cdk deploy QSR-ConnectStack \
+      --require-approval never \
+      --outputs-file "../../../$OUTPUTS_DIR/connect.json"
+
+    if [ $? -eq 0 ]; then
+      print_success "QSR-ConnectStack deployed"
+    else
+      print_error "QSR-ConnectStack deployment failed"
+      cd ../../..
+      exit 1
+    fi
+
+    cd ../../..
+
+    # Extract Sessions Table name from Connect stack outputs
+    SESSIONS_TABLE_NAME=$(json_val "$OUTPUTS_DIR/connect.json" "QSR-ConnectStack" "SessionsTableName")
+
+    if [ -z "$SESSIONS_TABLE_NAME" ]; then
+      print_warning "Sessions Table name not found in Connect stack outputs, querying CloudFormation..."
+      SESSIONS_TABLE_NAME=$(aws cloudformation describe-stacks \
+        --stack-name QSR-ConnectStack \
+        --region us-east-1 \
+        --query "Stacks[0].Outputs[?OutputKey=='SessionsTableName'].OutputValue" \
+        --output text 2>/dev/null || echo "")
+    fi
+
+    if [ -z "$SESSIONS_TABLE_NAME" ]; then
+      print_error "Could not extract Sessions Table name from Connect stack"
+      exit 1
+    fi
+
+    print_info "Sessions Table: $SESSIONS_TABLE_NAME"
+
+    # Re-deploy AgentCore Runtime with SessionsTableName parameter
+    print_info "Updating AgentCore Runtime with Sessions Table name..."
+
+    GATEWAY_URL=$(json_val "$OUTPUTS_DIR/agentcore-gateway.json" "QSR-AgentCoreGatewayStack" "GatewayUrl")
+
+    cd backend/agentcore-runtime/cdk
+
+    cdk deploy --all \
+      --require-approval never \
+      --parameters AgentCoreRuntimeStack:AgentCoreGatewayUrl="$GATEWAY_URL" \
+      --parameters AgentCoreRuntimeStack:SessionsTableName="$SESSIONS_TABLE_NAME" \
+      --outputs-file "../../../$OUTPUTS_DIR/agentcore-runtime.json"
+
+    if [ $? -eq 0 ]; then
+      print_success "AgentCore Runtime updated with Sessions Table"
+    else
+      print_error "AgentCore Runtime update failed"
+      cd ../../..
+      exit 1
+    fi
+
+    cd ../../..
+
+    # Extract phone number from Connect stack outputs
+    CONNECT_PHONE_NUMBER=$(json_val "$OUTPUTS_DIR/connect.json" "QSR-ConnectStack" "ConnectPhoneNumber")
+
+    update_state "amazon-connect" true "{\"sessions_table\": \"$SESSIONS_TABLE_NAME\", \"phone_number\": \"$CONNECT_PHONE_NUMBER\"}"
+    print_success "Amazon Connect deployed"
+
+    if [ -n "$CONNECT_PHONE_NUMBER" ]; then
+      print_info "Provisioned phone number: $CONNECT_PHONE_NUMBER"
+    fi
+  else
+    print_success "Amazon Connect up to date"
+  fi
 fi
 
 ################################################################################
@@ -695,6 +825,18 @@ if [ -f "$OUTPUTS_DIR/frontend.json" ]; then
     else
       echo -e "${GREEN}  🔑 Password: (check your email for the temporary password)${NC}"
     fi
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+  fi
+fi
+
+# Show Connect phone number if deployed
+if [ -f "$OUTPUTS_DIR/connect.json" ]; then
+  CONNECT_PHONE_NUMBER=$(json_val "$OUTPUTS_DIR/connect.json" "QSR-ConnectStack" "ConnectPhoneNumber")
+  if [ -n "$CONNECT_PHONE_NUMBER" ]; then
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  📞 Amazon Connect Phone Number: $CONNECT_PHONE_NUMBER${NC}"
+    echo -e "${GREEN}  ℹ️  Call this number to place an order by phone${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo ""
   fi
