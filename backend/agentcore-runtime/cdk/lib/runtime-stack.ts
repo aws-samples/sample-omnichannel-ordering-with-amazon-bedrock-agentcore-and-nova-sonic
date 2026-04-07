@@ -32,6 +32,13 @@ export class RuntimeStack extends cdk.Stack {
       constraintDescription: 'Must be a valid HTTPS URL',
     });
 
+    // Optional parameter for company/brand name
+    const companyName = new cdk.CfnParameter(this, 'CompanyName', {
+      type: 'String',
+      default: '',
+      description: 'Company or brand name for the restaurant (e.g. "Burger Palace"). Used to brand-lock the agent.',
+    });
+
     // Upload agent directory to S3 bucket for CodeBuild access
     const sourceDeployment = new s3deploy.BucketDeployment(this, 'AgentSourceDeployment', {
       sources: [s3deploy.Source.asset('../agent', {
@@ -225,6 +232,7 @@ export class RuntimeStack extends cdk.Stack {
       environmentVariables: {
         LOG_LEVEL: 'INFO',
         AGENTCORE_GATEWAY_URL: agentcoreGatewayUrl.valueAsString,
+        COMPANY_NAME: companyName.valueAsString,
         IMAGE_VERSION: new Date().toISOString(),
       },
 

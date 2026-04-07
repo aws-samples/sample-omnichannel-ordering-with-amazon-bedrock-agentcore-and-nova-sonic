@@ -20,6 +20,7 @@ source ./deployment-state.sh
 OUTPUTS_DIR="cdk-outputs"
 USER_EMAIL=""
 USER_NAME=""
+COMPANY_NAME=""
 MODE="update"  # update (idempotent) or fresh (clean redeploy)
 SKIP_PREFLIGHT=false
 SKIP_SYNTHETIC_DATA=false
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --user-email) USER_EMAIL="$2"; shift 2 ;;
     --user-name) USER_NAME="$2"; shift 2 ;;
+    --company-name) COMPANY_NAME="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
     --skip-synthetic-data) SKIP_SYNTHETIC_DATA=true; shift ;;
@@ -46,6 +48,7 @@ while [[ $# -gt 0 ]]; do
       echo "Required Options:"
       echo "  --user-email EMAIL           Email for Cognito user (required for first deployment)"
       echo "  --user-name NAME             Full name for Cognito user (required for first deployment)"
+      echo "  --company-name NAME          Company/brand name for the restaurant (e.g. \"Burger Palace\")"
       echo ""
       echo "Deployment Options:"
       echo "  --mode MODE                  Deployment mode: update (default) or fresh"
@@ -289,6 +292,7 @@ if [ "$RUNTIME_DEPLOYED" = "false" ]; then
   cdk deploy --all \
     --require-approval never \
     --parameters AgentCoreRuntimeStack:AgentCoreGatewayUrl="$GATEWAY_URL" \
+    ${COMPANY_NAME:+--parameters AgentCoreRuntimeStack:CompanyName="$COMPANY_NAME"} \
     --outputs-file "../../../$OUTPUTS_DIR/agentcore-runtime.json"
   
   update_state "agentcore-runtime" true '{"stacks": ["AgentCoreInfraStack", "AgentCoreRuntimeStack"]}'
@@ -343,7 +347,7 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
       python3 cleanup_data.py --force
       
       print_info "Populating database with new synthetic data..."
-      python3 populate_data.py
+      python3 populate_data.py ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
       
       update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
       print_success "Synthetic data repopulated"
@@ -357,7 +361,7 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
     pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
     
     print_info "Populating database with synthetic data..."
-    python3 populate_data.py
+    python3 populate_data.py ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
     
     update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
     print_success "Synthetic data populated"
