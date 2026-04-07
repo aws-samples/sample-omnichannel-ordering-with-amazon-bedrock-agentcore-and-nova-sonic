@@ -97,6 +97,9 @@ A CDK stack creates an AWS Amplify App for hosting the React frontend. After the
 # 2. Deploy everything (IMPORTANT: Use a VALID email address)
 ./deploy-all.sh --user-email your-valid-email@example.com --user-name "Your Name"
 
+# Optional: deploy with company branding
+./deploy-all.sh --user-email your-valid-email@example.com --user-name "Your Name" --company-name "Amazing Food"
+
 # 3. Cleanup when done
 ./cleanup-all.sh
 ```
@@ -194,11 +197,17 @@ The following estimates assume 1,000 voice orders per month with 5 restaurant lo
 ```bash
 # Deploy all components at once
 ./deploy-all.sh --user-email your-email@example.com --user-name "Your Name"
+
+# Deploy with company branding (optional)
+./deploy-all.sh --user-email your-email@example.com --user-name "Your Name" --company-name "Amazing Food"
 ```
 
 **Required Parameters**:
 - `--user-email`: **Your VALID email address** (AWS Cognito will send temporary password here - **you must have access to this email**)
 - `--user-name`: Your full name (for the test user profile)
+
+**Optional Parameters**:
+- `--company-name`: Your restaurant brand name (e.g. `"Amazing Food"`). When set, the agent is brand-locked to only serve and suggest locations for that brand, and synthetic data locations are branded accordingly.
 
 > **⚠️ CRITICAL**: The `--user-email` parameter must be a **valid, accessible email address**. AWS Cognito sends a temporary password to this email during deployment. If you don't receive the email within 5 minutes, check your spam/junk folder. Without this password, you cannot complete the deployment validation or testing.
 
