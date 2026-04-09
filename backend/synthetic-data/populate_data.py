@@ -238,7 +238,7 @@ def search_locations(
         longitude=longitude,
         business_name=business_name,
         radius_miles=100,
-        max_results=20
+        max_results=50
     )
     
     if not places:
@@ -495,6 +495,10 @@ def main():
     for place in places:
         location_id = sanitize_location_id(place['place_id'], display_name)
         location_data = generator.generate_location_data(place, display_name, location_id)
+        # If rebranding, overwrite the 'name' field with "{company_name} - {city}"
+        if display_name != business_name:
+            city = location_data.get('city', '')
+            location_data['name'] = f"{display_name} - {city}" if city else display_name
         locations.append(location_data)
     print_success(f"Generated {len(locations)} location records")
     
