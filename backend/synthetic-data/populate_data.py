@@ -6,11 +6,12 @@ Interactive CLI tool for populating DynamoDB tables with synthetic test data.
 Queries AWS Geo Places API for real locations and generates realistic test data.
 
 Usage:
-    python populate_data.py
+    python populate_data.py [--company-name "Burger Palace"]
 """
 import os
 import sys
 import json
+import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -237,7 +238,7 @@ def search_locations(
         longitude=longitude,
         business_name=business_name,
         radius_miles=100,
-        max_results=20
+        max_results=50
     )
     
     if not places:
@@ -411,6 +412,13 @@ def ingest_data(
 
 def main():
     """Main execution flow."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Populate QSR synthetic data')
+    parser.add_argument('--company-name', type=str, default='',
+                        help='Company/brand name to brand the locations (e.g. "Burger Palace")')
+    args = parser.parse_args()
+    company_name = args.company_name.strip()
+
     print_header("QSR Ordering System - Synthetic Data Population")
     
     # Step 1: Load deployment outputs
@@ -455,6 +463,20 @@ def main():
     if not places:
         print_error("No locations found. Try a different business name or location.")
         return 1
+
+    # Ask if user wants to rebrand locations with the company name
+    display_name = business_name
+    if company_name and company_name.lower() != business_name.lower():
+        print()
+        print_info(f"Found {len(places)} '{business_name}' locations.")
+        print_info(f"Company name from deployment: '{company_name}'")
+        rebrand = input(f"\033[96mRename locations to '{company_name}' branding? (yes/no): \033[0m").strip().lower()
+        if rebrand in ('yes', 'y'):
+            display_name = company_name
+            print_success(f"Locations will be branded as '{company_name}'")
+        else:
+            print_info(f"Keeping original name: '{business_name}'")
+    print()
     
     # Step 5: Get home address
     print_header("Step 4: Customer Home Address")
@@ -471,8 +493,12 @@ def main():
     print_info("Generating location records...")
     locations = []
     for place in places:
-        location_id = sanitize_location_id(place['place_id'], business_name)
-        location_data = generator.generate_location_data(place, business_name, location_id)
+        location_id = sanitize_location_id(place['place_id'], display_name)
+        location_data = generator.generate_location_data(place, display_name, location_id)
+        # If rebranding, overwrite the 'name' field with "{company_name} - {city}"
+        if display_name != business_name:
+            city = location_data.get('city', '')
+            location_data['name'] = f"{display_name} - {city}" if city else display_name
         locations.append(location_data)
     print_success(f"Generated {len(locations)} location records")
     
@@ -551,7 +577,7 @@ def main():
     print()
     print_info("You can now test the QSR ordering agent with realistic data")
     print_info(f"Customer: {customer_name} ({customer_id})")
-    print_info(f"Locations: {len(locations)} {business_name} locations")
+    print_info(f"Locations: {len(locations)} {display_name} locations")
     print_info(f"Menu Items: {len(menu_items)} items")
     print_info(f"Orders: {len(orders)} sample orders")
     print()
