@@ -1,3 +1,6 @@
+> [!NOTE]
+> The content presented here serves as an example intended solely for educational objectives and should not be implemented in a live production environment without proper modifications and rigorous testing.
+> 
 # Omnichannel Ordering with Amazon Bedrock AgentCore and Nova 2 Sonic
 
 ## Introduction
@@ -170,7 +173,7 @@ If you decide to discontinue using the solution, you can follow these steps to r
 **Delete the stacks:**
 
 ```bash
-./cleanup-all.sh --force
+./cleanup-all.sh
 ```
 
 **Delete the Amplify application:**
@@ -193,8 +196,8 @@ To learn more about Amazon Bedrock AgentCore, Amazon Nova Sonic, and additional 
 
 ## About the authors
 
-**Salman Ahmed** - Salman is a Senior Technical Account Manager at AWS. He specializes in guiding customers through the design, implementation, and support of AWS solutions. Combining his networking expertise with a drive to explore new technologies, he helps organizations successfully navigate their cloud journey. Outside work, he enjoys photography, traveling, and watching his favorite sports teams.
-
 **Sergio Barraza** - Sergio is a Senior Technical Account Manager at AWS, helping customers design and optimize cloud solutions. With more than 25 years in software development, he guides customers through AWS services adoption. Outside work, Sergio is a multi-instrument musician playing guitar, piano, and drums, and he also practices Wing Chun Kung Fu.
+
+**Salman Ahmed** - Salman is a Senior Technical Account Manager at AWS. He specializes in guiding customers through the design, implementation, and support of AWS solutions. Combining his networking expertise with a drive to explore new technologies, he helps organizations successfully navigate their cloud journey. Outside work, he enjoys photography, traveling, and watching his favorite sports teams.
 
 **Ravi Kumar** - Ravi is a Senior Technical Account Manager in AWS Enterprise Support who helps customers in the travel and hospitality industry to streamline their cloud operations on AWS. He is a results-driven IT professional with over 20 years of experience. Ravi is passionate about generative AI and actively explores its applications in cloud computing. Outside work, Ravi enjoys creative activities like painting. He also likes playing cricket and traveling to new places.
