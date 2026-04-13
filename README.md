@@ -36,7 +36,7 @@ The solution will deploy:
 
 The following diagram represents the solution architecture, which contains three key sections:
 
-![Omnichannel Architecture Diagram](https://d2908q01vomqb2.cloudfront.net/f1f836cb4ea6efb2a0b1b99f41ad8b103eff4b59/2026/04/07/ML-20200-image-1.png)
+![Omnichannel Architecture Diagram](./assets/infrastructure.png)
 
 **Section A: Backend infrastructure**
 
