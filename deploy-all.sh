@@ -131,6 +131,42 @@ fi
 print_section "Idempotent Deployment - Mode: $MODE"
 
 ################################################################################
+# Pre-flight: API Gateway CloudWatch Role
+# Fresh AWS accounts don't have the account-level CloudWatch role that
+# API Gateway needs for logging. Check if it exists, create if not.
+################################################################################
+
+print_info "Checking API Gateway CloudWatch logging role..."
+EXISTING_CW_ROLE=$(aws apigateway get-account --region us-east-1 --query 'cloudwatchRoleArn' --output text 2>/dev/null || echo "None")
+
+if [ "$EXISTING_CW_ROLE" = "None" ] || [ -z "$EXISTING_CW_ROLE" ]; then
+  print_warning "No API Gateway CloudWatch role found. Creating one..."
+
+  # Create the role if it doesn't exist
+  aws iam create-role \
+    --role-name ApiGatewayCloudWatchLogsRole \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"apigateway.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+    --region us-east-1 > /dev/null 2>&1 || true
+
+  aws iam attach-role-policy \
+    --role-name ApiGatewayCloudWatchLogsRole \
+    --policy-arn arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs \
+    --region us-east-1 > /dev/null 2>&1 || true
+
+  # Get the role ARN
+  CW_ROLE_ARN=$(aws iam get-role --role-name ApiGatewayCloudWatchLogsRole --query 'Role.Arn' --output text --region us-east-1 2>/dev/null)
+
+  # Set it at the account level
+  aws apigateway update-account \
+    --patch-operations op=replace,path=/cloudwatchRoleArn,value="$CW_ROLE_ARN" \
+    --region us-east-1 > /dev/null 2>&1
+
+  print_success "API Gateway CloudWatch role created and configured"
+else
+  print_success "API Gateway CloudWatch role already configured"
+fi
+
+################################################################################
 # Backend Infrastructure
 ################################################################################
 
