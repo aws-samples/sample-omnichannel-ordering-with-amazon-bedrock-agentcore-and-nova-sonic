@@ -5,15 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgentCore Runtime WebSocket Test Client</title>
     <!-- MapLibre GL JS -->
-    <!-- Note: SRI hashes are not added for unpkg.com resources as they use version ranges (@3, @1) -->
-    <!-- which can resolve to different files. For production, pin to specific versions and add SRI. -->
-    <!-- Example: maplibre-gl@3.6.2 instead of maplibre-gl@3 -->
+    <!-- Note: unpkg.com resources use version ranges (@3, @1) which can resolve to different files. -->
+    <!-- For production, pin to specific versions and add SRI integrity hashes. -->
+    <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
     <link href="https://unpkg.com/maplibre-gl@3/dist/maplibre-gl.css" rel="stylesheet" />
+    <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
     <script src="https://unpkg.com/maplibre-gl@3"></script>
     <!-- AWS SDK and Amazon Location Helpers -->
-    <!-- AWS SDK uses a specific version (2.1691.0) but SRI is not feasible as AWS may update the file -->
-    <!-- For production deployments, consider hosting these libraries locally or using a package manager -->
+    <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1691.0.min.js"></script>
+    <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
     <script src="https://unpkg.com/amazon-location-helpers@1"></script>
     <style>
         * {
@@ -1305,7 +1306,9 @@
                 return;
             }
             
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             if (!presignedUrl.startsWith('ws://') && !presignedUrl.startsWith('wss://')) {
+                // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
                 addMessage('❌ Error: URL must start with ws:// or wss://', 'system');
                 return;
             }

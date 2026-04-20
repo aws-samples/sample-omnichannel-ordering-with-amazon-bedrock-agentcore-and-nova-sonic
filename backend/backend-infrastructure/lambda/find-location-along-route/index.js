@@ -84,7 +84,7 @@ exports.handler = async (event) => {
 
           return { ...location, detourMinutes };
         } catch (error) {
-          console.error(`Error calculating route for location ${location.locationId}:`, error);
+          console.error("Error calculating route for location %s:", location.locationId, error);
           return null;
         }
       })

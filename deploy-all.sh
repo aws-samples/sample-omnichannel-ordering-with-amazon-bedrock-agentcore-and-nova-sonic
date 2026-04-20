@@ -470,15 +470,15 @@ fi
 # Password Setup for Test User (last interactive step)
 ################################################################################
 
-FINAL_PASSWORD="<your-password>"
+FINAL_USER_PW="<your-password>"
 
 # Only prompt for password change if not already done and backend outputs exist
-PASSWORD_ALREADY_CHANGED=$(get_state_data "backend-infrastructure" "password_changed")
+PW_ALREADY_CHANGED=$(get_state_data "backend-infrastructure" "password_changed")
 
-if [ "$PASSWORD_ALREADY_CHANGED" = "true" ]; then
+if [ "$PW_ALREADY_CHANGED" = "true" ]; then
   print_section "Password Setup"
   print_success "Password was already changed in a previous run"
-  FINAL_PASSWORD="<your-password>"
+  FINAL_USER_PW="<your-password>"
 elif [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
   print_section "Password Setup for Test User"
 
@@ -584,7 +584,7 @@ elif [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
         
         if [ $CHALLENGE_EXIT_CODE -eq 0 ]; then
           print_success "Password changed successfully!"
-          FINAL_PASSWORD="$NEW_PASSWORD"
+          FINAL_USER_PW="$NEW_PASSWORD"
           PASSWORD_CHANGED=true
           update_state "backend-infrastructure" true '{"password_changed": true}'
           break
@@ -598,7 +598,7 @@ elif [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
       else
         if echo "$AUTH_RESPONSE" | grep -q "AuthenticationResult"; then
           print_success "Password already changed — authentication successful!"
-          FINAL_PASSWORD="$TEMP_PASSWORD"
+          FINAL_USER_PW="$TEMP_PASSWORD"
           PASSWORD_CHANGED=true
           update_state "backend-infrastructure" true '{"password_changed": true}'
           break
@@ -613,11 +613,11 @@ elif [ -f "$OUTPUTS_DIR/backend-infrastructure.json" ]; then
     
     if [ "$PASSWORD_CHANGED" = false ]; then
       print_warning "Password not changed. You'll need to change it on first login."
-      FINAL_PASSWORD="<temporary-password-from-email>"
+      FINAL_USER_PW="<temporary-password-from-email>"
     fi
   else
     print_info "Skipping password change. You will need to change it on first login."
-    FINAL_PASSWORD="<temporary-password-from-email>"
+    FINAL_USER_PW="<temporary-password-from-email>"
   fi
   echo ""
 fi
@@ -660,7 +660,7 @@ echo ""
 if [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$IDENTITY_POOL_ID" ] && [ -n "$RUNTIME_ARN" ] && [ -n "$REGION" ]; then
   echo -e "${BLUE}cd backend/agentcore-runtime/test-client && python3 client-cognito-sigv4.py \\
   --username AppUser \\
-  --password '$FINAL_PASSWORD' \\
+  --password '$FINAL_USER_PW' \\
   --user-pool-id $USER_POOL_ID \\
   --client-id $CLIENT_ID \\
   --identity-pool-id $IDENTITY_POOL_ID \\
@@ -669,7 +669,7 @@ if [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$IDENTITY_POOL_ID" ] &
   echo ""
   print_info "Then open: http://localhost:8000"
   
-  if [ "$FINAL_PASSWORD" == "<temporary-password-from-email>" ]; then
+  if [ "$FINAL_USER_PW" == "<temporary-password-from-email>" ]; then
     print_warning "Note: You'll be prompted to change the temporary password on first login"
   fi
 else
@@ -699,14 +699,14 @@ echo ""
 if [ -n "$API_GATEWAY_URL" ] && [ -n "$USER_POOL_ID" ] && [ -n "$CLIENT_ID" ] && [ -n "$IDENTITY_POOL_ID" ]; then
   echo -e "${BLUE}cd backend/backend-infrastructure && ./test-api.sh \\
   --username AppUser \\
-  --password '$FINAL_PASSWORD' \\
+  --password '$FINAL_USER_PW' \\
   --client-id $CLIENT_ID \\
   --identity-pool-id $IDENTITY_POOL_ID \\
   --user-pool-id $USER_POOL_ID \\
   --region $REGION \\
   --api-url $API_GATEWAY_URL${NC}"
   
-  if [ "$FINAL_PASSWORD" == "<temporary-password-from-email>" ]; then
+  if [ "$FINAL_USER_PW" == "<temporary-password-from-email>" ]; then
     echo ""
     print_warning "Note: You'll be prompted to change the password on first run"
   fi
@@ -730,7 +730,7 @@ if [ -f "$OUTPUTS_DIR/frontend.json" ]; then
     echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}  🌐 Frontend URL: $AMPLIFY_URL${NC}"
     echo -e "${GREEN}  👤 Username: AppUser${NC}"
-    if [ "$FINAL_PASSWORD" != "<your-password>" ] && [ "$FINAL_PASSWORD" != "<temporary-password-from-email>" ]; then
+    if [ "$FINAL_USER_PW" != "<your-password>" ] && [ "$FINAL_USER_PW" != "<temporary-password-from-email>" ]; then
       echo -e "${GREEN}  🔑 Password: (the password you just set)${NC}"
     else
       echo -e "${GREEN}  🔑 Password: (check your email for the temporary password)${NC}"

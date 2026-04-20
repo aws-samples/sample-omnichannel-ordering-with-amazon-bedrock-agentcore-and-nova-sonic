@@ -245,7 +245,7 @@ app.add_middleware(
     # Requests never reach the agent without proper authentication - CORS is a secondary defense.
     # The agent is designed to be accessible from multiple channels (web, mobile, in-car systems)
     # where the origin cannot be predetermined. IAM authentication is the primary security control.
-    allow_origins=["*"],
+    allow_origins=["*"],  # nosemgrep: python.fastapi.security.wildcard-cors.wildcard-cors
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
