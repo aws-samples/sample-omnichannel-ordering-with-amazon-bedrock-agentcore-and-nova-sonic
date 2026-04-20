@@ -1,78 +1,98 @@
-> [!NOTE]
-> The content presented here serves as an example intended solely for educational objectives and should not be implemented in a live production environment without proper modifications and rigorous testing.
-> 
-# Omnichannel Ordering with Amazon Bedrock AgentCore and Nova 2 Sonic
+# Guidance for Restaurant In-App Voice AI using Amazon Bedrock AgentCore
 
-## Introduction
+## Table of Contents
 
-Building a voice-enabled ordering system that works across mobile apps, websites, and voice interfaces (an [omnichannel](https://en.wikipedia.org/wiki/Omnichannel) approach) presents real challenges. You need to process bidirectional audio streams, maintain conversation context across multiple turns, integrate backend services without tight coupling, and scale to handle peak traffic. 
+1. [Overview](#overview)
+    - [User request flow](#user-request-flow)
+    - [Cost](#cost)
+    - [Sample Cost Table](#sample-cost-table)
+2. [Prerequisites](#prerequisites)
+    - [Operating System](#operating-system)
+    - [Third-party tools](#third-party-tools)
+    - [AWS account requirements](#aws-account-requirements)
+    - [AWS CDK bootstrap](#aws-cdk-bootstrap)
+    - [Supported Regions](#supported-regions)
+3. [Automated Deployment](#automated-deployment)
+4. [Manual Deployment](#manual-deployment)
+5. [Deployment Validation](#deployment-validation)
+6. [Running the Guidance](#running-the-guidance)
+7. [Next Steps](#next-steps)
+8. [Cleanup](#cleanup)
+9. [Notices](#notices)
+10. [FAQ, Known Issues, Additional Considerations, and Limitations](#faq-known-issues-additional-considerations-and-limitations)
+11. [Revisions](#revisions)
+12. [Authors](#authors)
 
-In this post, we'll show you how to build a complete omnichannel ordering system using [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/), an agentic platform, to build, deploy, and operate highly effective AI agents securely at scale using any framework and foundation model and [Amazon Nova 2 Sonic](https://aws.amazon.com/nova/). You'll deploy infrastructure that handles authentication, processes orders, and provides location-based recommendations. The system uses managed services that scale automatically, reducing the operational overhead of building voice AI applications. By the end, you'll have a working system that processes voice orders across multiple customer touchpoints. The AI orchestration layer connects to a sample backend architecture with sample menu data, giving you a head start while implementing a project of this nature. This project was divided into modules giving you flexibility if you are looking to reuse components for integrating with your existing backend APIs.
+## Overview
 
-In this post, you'll learn how to:
+This Guidance demonstrates how to build an AI-powered voice ordering system for quick-service restaurants (QSR) that enables customers to place hands-free orders through natural voice conversation. Customers speak their order and the system handles the rest — no screens, no typing, no tapping. The Guidance addresses the rapidly growing QSR voice ordering market by combining real-time speech-to-speech AI with a decoupled, scalable backend architecture.
 
-- Deploy a multi-channel Voice AI ordering infrastructure using [AWS Cloud Development Kit (AWS CDK)](https://aws.amazon.com/cdk/)
-- Implement an agent using Strands with Amazon Nova 2 Sonic for real-time speech processing hosted on AgentCore Runtime
-- Connect your AI agent to backend services using [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/getting-started/intro) through AgentCore Gateway
-- Test your system with realistic ordering scenarios including route-based pickup recommendations
+The Guidance uses **Amazon Bedrock AgentCore** for agent hosting with microVM session isolation, **Amazon Nova 2 Sonic** for bidirectional speech-to-speech processing, the **Strands Agents** framework for conversational agent logic, **AWS Location Services** for geocoding and route optimization, and **Model Context Protocol (MCP)** for standardized tool interactions between the agent and backend services. All infrastructure is deployed using **AWS Cloud Development Kit (AWS CDK)**.
 
-Amazon Nova 2 Sonic is a speech-to-speech foundation model available through Amazon Bedrock that you can use for real-time voice interactions. When combined with Amazon Bedrock AgentCore, you get natural voice ordering across all customer touchpoints.
+The architecture implements a four-section decoupled pattern:
 
-## Solution overview
+![Architecture Diagram](./assets/architecture-diagram.png)
 
-This solution architecture separates your frontend, AI agent, and backend services into distinct components. This separation allows you to develop and scale each component independently. The MCP is an open standard for connecting AI applications to external data sources, tools, and workflows. It provides standardized communication between your agent and backend services.
+**Section A — Backend Infrastructure.** Five CDK stacks deploy the restaurant backend: **Amazon DynamoDB** tables for customer profiles, orders, menu items, carts, and locations; **AWS Location Services** for geocoding, route calculation, and map rendering; **AWS Lambda** functions for business logic; **Amazon API Gateway** REST endpoints with **AWS Identity and Access Management (IAM)** authorization; and **Amazon Cognito** for user authentication with User Pool, Identity Pool, and an initial test user.
 
-The solution will deploy:
+**Section B — AgentCore Gateway.** A CDK stack creates the **Amazon Bedrock AgentCore Gateway** with MCP protocol, exposing all eight backend API endpoints as discoverable MCP tools that the agent can invoke by name.
 
-- **[Amazon Cognito](https://aws.amazon.com/cognito/)** - Handles user authentication and provides temporary AWS credentials for secure API access. You can change this to your IDP of your choice as long as it is OAuth 2.0 compliant.
-- **[Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html)** - Hosts your AI agent with microVM isolation. Each user session runs in an isolated virtual machine, which keeps your customer sessions secure and performant even under high load. It prevents one customer's session from affecting another's performance or accessing their data.
-- **[Amazon Bedrock AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html)** - Provides a secure way for developers to build, deploy, discover, and connect to tools at scale, which provides standardized communication between the agent and your business logic without tight coupling, so that you can modify backends or add new tools without rewriting integration code.
-- **[Amazon API Gateway](https://aws.amazon.com/api-gateway/)** - Exposes your backend services through [Representational State Transfer (REST)](https://aws.amazon.com/what-is/restful-api/#what-is-rest--1hfzuqn) endpoints with [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) based authorization.
-- **[AWS Lambda](https://aws.amazon.com/lambda/)** - Executes your business logic for menu retrieval, order processing, and location services.
-- **[Amazon DynamoDB](https://aws.amazon.com/dynamodb/)** - Stores customer profiles, orders, menu items, and shopping carts with single-digit millisecond latency.
-- **[AWS Location Services](https://aws.amazon.com/location/)** - Provides location-based features for pickup recommendations.
+**Section C — AgentCore Runtime.** Two CDK stacks provision **Amazon Elastic Container Registry (Amazon ECR)** for container storage, **Amazon Simple Storage Service (Amazon S3)** for source uploads, **AWS CodeBuild** for ARM64 Docker builds, and the **Amazon Bedrock AgentCore Runtime** with WebSocket protocol. The agent uses the Strands Agents framework with Amazon Nova 2 Sonic for bidirectional voice streaming.
 
-## Architecture diagram
+**Section D — Frontend.** A CDK stack creates an **AWS Amplify** application for hosting the React frontend. After the stack deploys, the frontend code is built and pushed to Amplify.
 
-The following diagram represents the solution architecture, which contains three key sections:
+### User request flow
 
-![Omnichannel Architecture Diagram](./assets/infrastructure.png)
+1. The user opens the web application hosted on **AWS Amplify** and authenticates with **Amazon Cognito** using username and password to receive JSON Web Token (JWT) tokens.
+2. The frontend exchanges the ID Token with the **Amazon Cognito** Identity Pool for temporary AWS credentials.
+3. The frontend opens a SigV4-signed WebSocket connection to **Amazon Bedrock AgentCore Runtime** and sends the Access Token for identity verification.
+4. The runtime validates the token via the **Amazon Cognito** GetUser API and extracts the customer's name, email, and customer ID.
+5. The runtime initializes **Amazon Nova 2 Sonic** on **Amazon Bedrock** with a personalized system prompt.
+6. The runtime connects to **Amazon Bedrock AgentCore Gateway** as an MCP client using SigV4 authentication and discovers available tools.
+7. The user speaks their order. The agent processes voice through Amazon Nova 2 Sonic and invokes tools asynchronously through the AgentCore Gateway using MCP. The gateway forwards requests as REST API calls to **Amazon API Gateway**, which routes them to **AWS Lambda** functions. Lambda functions query **Amazon DynamoDB** tables and **AWS Location Services**.
+8. Amazon Nova 2 Sonic generates a contextual voice response incorporating the tool results and streams it back to the user over the WebSocket connection.
 
-**Section A: Backend infrastructure**
+### Cost
 
-This section deploys a sample restaurant architecture as backend services using infrastructure as code. It provisions data storage for customer information, orders, menus, carts, and locations. It also sets up location-based services for address handling and mapping, Lambda functions for business logic, an API layer for external access, and user authentication and authorization services. Resources are deployed in the appropriate dependency sequence.
+You are responsible for the cost of the AWS services used while running this Guidance. As of April 2026, the cost for running this Guidance with the default settings in the US East (N. Virginia) Region is approximately $78.62 per month for processing 1,000 voice orders across 5 restaurant locations.
 
-**Section B: AgentCore Gateway**
+We recommend creating a [Budget](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html) through [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/) to help manage costs. Prices are subject to change. For full details, refer to the pricing webpage for each AWS service used in this Guidance.
 
-This section deploys the AgentCore Gateway infrastructure. It provisions the necessary IAM service permissions, creates the AgentCore Gateway service, and configures API integration to expose backend endpoints as agent-accessible tools.
+### Sample Cost Table
 
-**Section C: AgentCore Runtime and ECR image**
+The following table provides a sample cost breakdown for deploying this Guidance with the default parameters in the US East (N. Virginia) Region for one month. Estimates assume 1,000 voice orders per month with 5 restaurant locations and do not account for AWS Free Tier benefits.
 
-This section deploys the AgentCore Runtime environment. It provisions Amazon ECR for container storage, Amazon S3 for source uploads, AWS CodeBuild for build automation, and required IAM permissions. The AgentCore Runtime service is configured with WebSocket protocol.
+| AWS service | Dimensions | Cost [USD] |
+| ----------- | ---------- | ---------- |
+| [Amazon Bedrock (Nova 2 Sonic)](https://aws.amazon.com/nova/pricing/) | ~680 input + ~5,083 output speech tokens/session, ~7,438 input + ~1,260 output text tokens/session | $68.96 |
+| [Amazon Bedrock AgentCore Runtime](https://aws.amazon.com/bedrock/agentcore/pricing/) | 1,000 sessions, ~5 min each, ~30% active CPU, 1 vCPU, 512 MB memory | $2.63 |
+| [Amazon Bedrock AgentCore Gateway](https://aws.amazon.com/bedrock/agentcore/pricing/) | 1,000 search calls + 29,000 tool invocations, 8 tools indexed | $0.17 |
+| [Amazon Cognito](https://aws.amazon.com/cognito/pricing/) | 1,000 monthly active users | $5.50 |
+| [AWS Lambda](https://aws.amazon.com/lambda/pricing/) | 29,000 invocations, 512 MB, ~1 s average duration | $0.25 |
+| [Amazon API Gateway](https://aws.amazon.com/api-gateway/pricing/) | 29,000 REST API calls | $0.10 |
+| [Amazon DynamoDB](https://aws.amazon.com/dynamodb/pricing/) | 5 tables, on-demand, ~29,000 reads + ~5,000 writes | $0.01 |
+| [AWS Location Services](https://aws.amazon.com/location/pricing/) | ~1,000 geocoding + ~500 route calculations | $0.50 |
+| [AWS Amplify](https://aws.amazon.com/amplify/pricing/) | Hosting: 5 GB storage, 15 GB bandwidth | $0.50 |
+| | **Estimated Total** | **~$78.62** |
 
-**Section D: [AWS Amplify](https://aws.amazon.com/amplify/)**
-
-This section deploys the frontend application using AWS Amplify. It provisions the Amplify hosting service with deployment configuration and generates the necessary frontend configuration from backend outputs. The built web application is deployed and becomes accessible via the Amplify URL upon completion.
-
-## User request flow
-
-1. The user accesses the web application hosted on AWS Amplify from their browser or mobile device.
-2. The user authenticates with Amazon Cognito using their username and password and receives JWT tokens (Access Token and ID Token).
-3. The frontend exchanges the ID Token with the Cognito Identity Pool for temporary AWS credentials (Access Key, Secret Key, Session Token).
-4. The frontend opens a SigV4-signed WebSocket connection to AgentCore Runtime and sends the Access Token as the first message for identity verification.
-5. The agent hosted in AgentCore Runtime validates the Access Token by calling the Cognito GetUser API and extracts the customer's verified name, email, and customerId.
-6. AgentCore Runtime initializes the Nova 2 Sonic model on Amazon Bedrock and builds a personalized system prompt with the verified customer context.
-7. AgentCore Runtime connects to AgentCore Gateway as an MCP client using SigV4 authentication and discovers the available tools.
-8. The user speaks their order. The agent processes the voice input through Nova 2 Sonic and invokes tools asynchronously through the AgentCore Gateway using MCP.
-9. AgentCore Gateway exposes the backend REST APIs as MCP tools, so that the agent can discover and invoke them by name. When the agent calls a tool, AgentCore Gateway forwards the request as a REST API call to the API Gateway, which routes it to the appropriate Lambda function. Lambda functions query DynamoDB tables and AWS Location Services.
-10. Nova 2 Sonic generates a contextual voice response incorporating the tool results and streams it back to the user over the WebSocket connection.
+**Notes:**
+- Nova 2 Sonic output speech tokens are the dominant cost driver (~88% of total).
+- Token counts are based on observed metrics from real ordering conversations with tool calls.
+- AgentCore Runtime uses consumption-based pricing — you pay only for active CPU and memory, not I/O wait time.
+- Costs scale linearly with usage. For 10,000 orders per month, the estimated cost is approximately $786.
 
 ## Prerequisites
 
-Before you begin, verify you have the following in place:
+### Operating System
 
-- An [AWS account](https://signin.aws.amazon.com/signin?redirect_uri=https%3A%2F%2Fportal.aws.amazon.com%2Fbilling%2Fsignup%2Fresume&client_id=signup)
-- [Foundation model (FM)](https://aws.amazon.com/what-is/foundation-models/) access in Amazon Bedrock for Amazon Nova 2 Sonic in the same AWS Region where you will deploy this solution
+These deployment instructions are optimized to best work on **Amazon Linux 2023**. Deployment on macOS or other Linux distributions may require additional steps. 
+
+- [AWS account](https://signin.aws.amazon.com/signin) with administrator access or sufficient permissions to create the resources listed in this Guidance
+
+### Third-party tools
+
+Install the following tools before deployment:
+
 - [Node.js](https://nodejs.org/) 20.x or later (required for AWS CDK deployment)
 - [Python](https://www.python.org/downloads/) 3.13 or later (required for agent runtime and deployment scripts)
 - [AWS Command Line Interface (AWS CLI)](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) 2.x configured with credentials
@@ -86,118 +106,386 @@ Before you begin, verify you have the following in place:
   ```bash
   python3 -m pip install email-validator pyyaml --break-system-packages
   ```
-- The accompanying code downloaded from the [aws-samples GitHub repo](https://github.com/aws-samples/sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic)
 
-## Deploy solution resources using AWS CDK
+### AWS account requirements
 
-Clone the [GitHub repository](https://github.com/aws-samples/sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic) and navigate into the project directory.
+- IAM permissions to deploy CDK stacks and CloudFormation templates, create and manage Bedrock AgentCore Runtimes and Gateways, configure Cognito User Pools and Identity Pools, create Lambda functions and API Gateway endpoints, and set up DynamoDB tables and Location Services resources.
+- Amazon Bedrock model access for **Amazon Nova 2 Sonic**. Request access through the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) if not already enabled.
+- Access to the following services: Amazon Bedrock AgentCore Runtime, Amazon Bedrock (Nova 2 Sonic), AWS Lambda, Amazon DynamoDB, AWS Location Services, Amazon Cognito, AWS Amplify, Amazon API Gateway, Amazon ECR, Amazon S3, and AWS CodeBuild.
+
+### AWS CDK bootstrap
+
+If you are using AWS CDK for the first time, bootstrap your account and Region:
 
 ```bash
+npx cdk bootstrap aws://<ACCOUNT_ID>/<REGION>
+```
+
+Replace `<ACCOUNT_ID>` with your AWS account ID and `<REGION>` with your target Region (for example, `us-east-1`).
+
+### Supported Regions
+
+This Guidance requires Amazon Bedrock model access for Amazon Nova 2 Sonic. Deploy in a Region where Nova 2 Sonic is available. Check the [Amazon Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) for current Region availability.
+
+## Automated Deployment
+
+For automated deployment, a one-click deploy script (`deploy-all.sh`) is available. This script automates all deployment steps including dependency installation, resource creation, and validation.
+
+**Usage:**
+
+```bash
+# Clone the repository
 git clone https://github.com/aws-samples/sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic
 cd sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic
+
+# Make the script executable and run it
+chmod +x deploy-all.sh
+./deploy-all.sh --user-email your-email@example.com --user-name "Your Name"
 ```
 
-Run the deployment script. Both parameters are required. The email address will receive a temporary password for the initial Cognito test user.
+**Required parameters:**
+- `--user-email` — A valid, accessible email address. Amazon Cognito sends a temporary password to this address during deployment.
+- `--user-name` — Full name for the test user profile.
 
-```bash
-./deploy-all.sh --user-email <your-email> --user-name "<Your Name>"
+**Optional parameters:**
+- `--company-name` — Restaurant brand name (for example, `"Amazing Food"`). When set, the agent only serves and suggests locations for that brand.
+- `--region` — AWS Region (default: `us-east-1`).
+- `--skip-frontend` — Skip frontend deployment.
+- `--skip-synthetic-data` — Skip synthetic data seeding.
+
+**What the script does:**
+- Checks all prerequisites (Node.js, Python, AWS CLI, CDK, credentials).
+- Bootstraps CDK if not already done.
+- Deploys backend infrastructure (DynamoDB, Lambda, API Gateway, Cognito, Location Services).
+- Deploys AgentCore Gateway (MCP server exposing backend APIs as tools).
+- Deploys AgentCore Runtime (agent with Nova 2 Sonic).
+- Seeds synthetic data and deploys the frontend (unless skipped).
+- Validates all CloudFormation stacks and displays deployment outputs.
+
+**Environment:**
+- Designed for Amazon Linux 2023, macOS, and Linux environments.
+- Can also be run on Amazon Linux 2023 EC2 instances or AWS CloudShell.
+- Requires AWS CLI configured with appropriate credentials.
+
+**Note:** For a detailed understanding of each deployment step, see the [Manual Deployment](#manual-deployment) section below.
+
+## Manual Deployment
+
+Follow these steps to deploy each component individually. Deploy in the order listed, as later components depend on outputs from earlier ones.
+
+1. Clone the repository and navigate to the project directory:
+   ```bash
+   git clone https://github.com/aws-samples/sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic
+   cd sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic
+   ```
+
+2. Run the preflight check to validate all prerequisites:
+   ```bash
+   ./preflight-check.sh
+   ```
+
+3. Deploy the backend infrastructure. This creates DynamoDB tables, Location Services resources, Lambda functions, API Gateway, and Cognito:
+   ```bash
+   cd backend/backend-infrastructure
+   npm install
+   cdk deploy --all \
+     --require-approval never \
+     --parameters QSR-CognitoStack:UserEmail="your-email@example.com" \
+     --parameters QSR-CognitoStack:UserName="Your Name" \
+     --outputs-file ../../cdk-outputs/backend-infrastructure.json
+   cd ../..
+   ```
+   Capture the `ApiGatewayId` from the output file `cdk-outputs/backend-infrastructure.json` under the `QSR-ApiGatewayStack` key.
+
+4. Deploy the AgentCore Gateway. This creates the MCP gateway that exposes backend APIs as agent-accessible tools:
+   ```bash
+   cd backend/agentcore-gateway/cdk
+   npm install
+   cdk deploy \
+     --require-approval never \
+     --context apiGatewayId="<API_GATEWAY_ID>" \
+     --outputs-file ../../../cdk-outputs/agentcore-gateway.json
+   cd ../../..
+   ```
+   Replace `<API_GATEWAY_ID>` with the value captured in step 3. Capture the `GatewayUrl` from the output file `cdk-outputs/agentcore-gateway.json` under the `QSR-AgentCoreGatewayStack` key.
+
+5. Deploy the AgentCore Runtime. This builds the agent container and creates the runtime with WebSocket protocol:
+   ```bash
+   cd backend/agentcore-runtime/cdk
+   npm install
+   cdk deploy --all \
+     --require-approval never \
+     --parameters AgentCoreRuntimeStack:AgentCoreGatewayUrl="<GATEWAY_URL>" \
+     --outputs-file ../../../cdk-outputs/agentcore-runtime.json
+   cd ../../..
+   ```
+   Replace `<GATEWAY_URL>` with the value captured in step 4.
+
+6. (Optional) Populate synthetic data. This seeds DynamoDB with sample locations, menu items, customers, and orders:
+   ```bash
+   cd backend/synthetic-data
+   pip3 install -r requirements.txt
+   python3 populate_data.py
+   cd ../..
+   ```
+
+7. (Optional) Deploy the frontend. This creates an Amplify application and deploys the React web app:
+   ```bash
+   cd frontend/cdk
+   npm install
+   cdk deploy --require-approval never \
+     --outputs-file ../../cdk-outputs/frontend.json
+   cd ..
+   npm install
+   npm run deploy:amplify
+   cd ..
+   ```
+   Capture the `AmplifyAppUrl` from the output file `cdk-outputs/frontend.json` under the `QSR-FrontendStack` key.
+
+8. Change the Cognito test user password. Amazon Cognito sends a temporary password to the email address provided in step 3. Authenticate with the temporary password and set a new permanent password:
+   ```bash
+   aws cognito-idp initiate-auth \
+     --auth-flow USER_PASSWORD_AUTH \
+     --client-id <CLIENT_ID> \
+     --auth-parameters USERNAME=AppUser,PASSWORD="<TEMP_PASSWORD>" \
+     --region <REGION>
+   ```
+   If the response contains a `NEW_PASSWORD_REQUIRED` challenge, respond with:
+   ```bash
+   aws cognito-idp respond-to-auth-challenge \
+     --client-id <CLIENT_ID> \
+     --challenge-name NEW_PASSWORD_REQUIRED \
+     --session "<SESSION_TOKEN>" \
+     --challenge-responses USERNAME=AppUser,NEW_PASSWORD="<NEW_PASSWORD>" \
+     --region <REGION>
+   ```
+   Replace `<CLIENT_ID>`, `<REGION>`, `<TEMP_PASSWORD>`, `<SESSION_TOKEN>`, and `<NEW_PASSWORD>` with the appropriate values from the backend infrastructure outputs and your email.
+
+## Deployment Validation
+
+Verify that all components deployed successfully by running the following checks.
+
+1. **Verify CloudFormation stacks.** Open the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation/) and confirm the following stacks show a status of `CREATE_COMPLETE` or `UPDATE_COMPLETE`:
+   - `QSR-DynamoDBStack`
+   - `QSR-LocationStack`
+   - `QSR-LambdaStack`
+   - `QSR-ApiGatewayStack`
+   - `QSR-CognitoStack`
+   - `QSR-AgentCoreGatewayStack`
+   - `AgentCoreInfraStack`
+   - `AgentCoreRuntimeStack`
+
+   Alternatively, run the status script:
+   ```bash
+   ./status.sh
+   ```
+
+2. **Verify backend API endpoints.** Test all eight REST API endpoints with Cognito authentication:
+   ```bash
+   cd backend/backend-infrastructure
+   ./test-api.sh -u AppUser -p <your-password>
+   ```
+   Expected output: All 8 API endpoints return successful responses.
+
+3. **Verify AgentCore Gateway.** List the available MCP tools:
+   ```bash
+   cd backend/agentcore-gateway/test-client
+   python3 test_gateway.py --test list-tools
+   ```
+   Expected output: 8 tools listed (GetCustomerProfile, GetMenu, AddToCart, and others).
+
+4. **Verify AgentCore Runtime.** Test a voice conversation:
+   ```bash
+   cd backend/agentcore-runtime/test-client
+   python3 client-cognito-sigv4.py --username AppUser --password <your-password>
+   ```
+   Expected output: A web UI opens at `http://localhost:8000` with working voice and text chat.
+
+## Running the Guidance
+
+After deployment and validation, use the system to place voice orders.
+
+### Inputs
+
+- **Cognito credentials:** Username `AppUser` and the password set during deployment.
+- **Microphone access:** The browser requires microphone permission for voice input.
+- **Location access:** (Optional) The browser can share GPS coordinates for location-based recommendations.
+
+### Using the test client
+
+1. Start the test client:
+   ```bash
+   cd backend/agentcore-runtime/test-client
+   python3 client-cognito-sigv4.py \
+     --username AppUser \
+     --password <your-password> \
+     --user-pool-id <USER_POOL_ID> \
+     --client-id <CLIENT_ID> \
+     --identity-pool-id <IDENTITY_POOL_ID> \
+     --runtime-arn <RUNTIME_ARN> \
+     --region <REGION>
+   ```
+   Replace the parameter values with outputs from the `cdk-outputs/` directory.
+
+2. Open `http://localhost:8000` in your browser.
+
+3. Click the microphone button and speak your order. Example prompts:
+   - "Hello, I would like to place an order."
+   - "I want a chicken sandwich combo."
+   - "Find restaurants near me."
+
+### Using the frontend (if deployed)
+
+1. Open the Amplify URL from the deployment output in your browser.
+2. Sign in with the `AppUser` credentials.
+3. Click the microphone button to start a voice conversation.
+
+### Expected output
+
+- **Voice transcription:** Your speech is transcribed and displayed in the chat interface.
+- **Agent response:** Natural voice response with order details streamed in real time.
+- **Tool invocations:** Backend tools are called asynchronously (GetMenu, AddToCart, GetCustomerProfile, and others).
+- **Order confirmation:** Order ID, total, and estimated ready time.
+
+### Example conversation
+
+```
+User: Hello, I would like to place an order.
+
+Agent: Hi Sergio, sure thing! Would you like to place an order at a
+       location near you, or are you looking for a specific location?
+
+User: I would like to pick up at the place I usually go.
+
+Agent: [Calling tools: GetPreviousOrders, GetMenu]
+
+       Sure thing! While I'm getting the menu from your usual location,
+       is there anything specific you'd like to order?
+
+User: Yes, I want a Chicken Sandwich combo.
+
+Agent: Alright! I see you previously ordered a Chicken Sandwich combo
+       for $6.99 at Van Alstyne, Texas. Would you like to repeat that?
+
+User: Yes.
+
+Agent: Perfect! Your order is ready for pickup at Van Alstyne.
+       Total: $7.79. Estimated ready time: 15 minutes.
 ```
 
-The script first runs preflight checks to validate that Node.js, Python, AWS CLI, CDK, credentials, CDK bootstrap, and Bedrock Nova 2 Sonic model access are all in place. If any check fails, it will report what's missing and offer to auto-install what it can.
+### Debugging and logging
 
-After preflight passes, the script runs five steps. Steps 1 through 3 are fully automated. Step 4 (Synthetic Data) will prompt you for a location such as a city, zip code, or address to use as the center point for searching nearby restaurants, a food type to search for (e.g., pizza, burgers, coffee shop, sandwich, tacos), whether to reuse the same address as the customer home, and a confirmation before writing the generated data into DynamoDB. Step 5 (Password Setup) will prompt you to optionally change the temporary Cognito password that was emailed to you. If you choose yes, you will enter the temporary password from the email and set a new permanent password that meets the Cognito policy (8+ characters, uppercase, lowercase, digit, symbol).
+- **Frontend logs:** Browser console (F12) shows WebSocket events and errors.
+- **Agent logs:** Amazon CloudWatch Logs at `/aws/bedrock-agentcore/runtimes/<runtime-name>`.
+- **Lambda logs:** Amazon CloudWatch Logs at `/aws/lambda/<function-name>`.
+- **API Gateway logs:** Amazon CloudWatch Logs at `/aws/apigateway/<api-id>`.
 
-After completion, the script outputs the front-end URL (e.g., `https://main.<app-id>.amplifyapp.com`) that you will use to access the application.
+## Next Steps
 
-![Omnichannel CDK output](https://d2908q01vomqb2.cloudfront.net/f1f836cb4ea6efb2a0b1b99f41ad8b103eff4b59/2026/04/07/ML-20200-image-2.png)
+Consider the following enhancements after deploying this Guidance:
 
-## Understanding serverless data management
+- **Multi-language support.** Amazon Nova 2 Sonic supports multiple languages. Extend the system prompt and menu data to serve customers in additional languages.
+- **Payment integration.** Add payment processing (Stripe, Square) to complete the ordering workflow end-to-end.
+- **POS system integration.** Connect to point-of-sale systems for real-time order routing to kitchen displays.
+- **Loyalty rewards.** Implement point redemption and reward tracking using the existing customer profile and order history tables.
+- **Dietary filters.** Add allergen warnings and dietary preference filtering to menu queries.
+- **CI/CD pipeline.** Set up AWS CodePipeline for automated testing and deployment of agent and infrastructure changes.
+- **Monitoring and alerting.** Configure Amazon CloudWatch dashboards and alarms for latency, error rates, and cost tracking.
+- **Mobile application.** Build a React Native mobile app using the same WebSocket and Cognito authentication pattern.
 
-API Gateway creates a REST API that connects your frontend to backend services with eight IAM-authenticated endpoints and Lambda integration.
+## Cleanup
 
-Your backend uses five DynamoDB tables supporting the complete ordering workflow. The **Customers Table** stores profiles (name, email, phone, loyalty tier, points) for personalized recommendations. The **Orders Table** stores order history with location data and uses a Global Secondary Index to query by location for identifying popular items. The **Menu Table** stores location-specific items with pricing and availability that varies by restaurant. The **Carts Table** stores temporary shopping carts with 24-hour TTL for automatic cleanup. The **Locations Table** stores restaurant data (coordinates, hours, tax rates) for order calculations and recommendations. DynamoDB on-demand capacity scales automatically with traffic.
+Remove all deployed resources to stop incurring charges.
 
-## Understanding location-based services
+### Automated cleanup
 
-Location Services provides location-based features that help customers find convenient pickup locations. The system deploys three resources: a **Place Index** (Esri) for geocoding and address search, a **Route Calculator** (Esri) for calculating driving routes and detour times, and a **Map** (VectorEsriNavigation style) for interactive visualization optimized for driving.
-
-Lambda functions provide three capabilities: **Nearest Location Search** finds the closest restaurants sorted by distance using GPS coordinates and the haversine formula. **Route-Based Search** identifies restaurants within a specified detour time (default 10 minutes) using actual driving times rather than straight-line distances. **Address Geocoding** converts street addresses to coordinates when GPS isn't available.
-
-These features enable context-aware recommendations like "I found a location 2 minutes from your route" or "Your usual location is 5 miles away."
-
-## Understanding voice AI processing with Amazon Bedrock AgentCore
-
-Your AI agent processes voice interactions through Amazon Bedrock AgentCore. Each user session runs in an isolated microVM, which keeps customer sessions secure and performant even under high load. It prevents one customer's session from affecting another's performance or accessing their data. AgentCore provides automatic scaling, built-in monitoring, and WebSocket support for real-time voice.
-
-The agent uses the Strands framework to define system prompts, tools, and conversation flow. Nova 2 Sonic provides:
-
-- Speech recognition across accents with background noise tolerance
-- Speech response adaptation to user tone and sentiment
-- Bidirectional streaming with low latency response times
-- Asynchronous tool calling that fetches data in parallel without blocking conversation
-- Interruption handling for natural turn-taking
-- Context awareness across multiple conversation turns
-
-The voice processing flow: Audio streams from the frontend (16 kHz PCM) via WebSocket to AgentCore Runtime. Nova 2 Sonic transcribes speech, the agent determines intent and selects tools, invokes them asynchronously via MCP, and the AgentCore Gateway translates MCP calls to REST API calls. Lambda functions execute business logic and return results, which the agent incorporates into its response. Nova 2 Sonic generates voice output that streams back to the frontend.
-
-This architecture minimizes latency for conversational ordering.
-
-## User authentication
-
-The solution uses Amazon Cognito user pools and identity pools for secure, role-based access control. User pools manage authentication and groups. Identity pools provide temporary AWS credentials linked to IAM roles. Users log in with their username and password to the Cognito User Pool, receiving JSON Web Token (JWT) tokens (Access Token and ID Token). The frontend exchanges the ID Token with the Cognito Identity Pool for temporary AWS credentials (Access Key, Secret Key, Session Token). These credentials sign the WebSocket connection to AgentCore Runtime and API Gateway requests using Signature Version 4 (SigV4). This architecture ensures that only authenticated users can access the application and ordering APIs.
-
-## WebSocket connection flow
-
-The following sequence diagram illustrates how the authentication credentials from the previous section establish a direct browser-to-AgentCore connection. Using the temporary AWS credentials, the frontend opens a SigV4-signed WebSocket connection to AgentCore Runtime and sends the Access Token for identity verification. The browser then streams 16kHz PCM audio and receives voice responses, transcriptions, and tool invocation notifications over the same connection. This avoids the need for a server-side proxy.
-
-![Omnichannel Authentication and Connection flow](https://d2908q01vomqb2.cloudfront.net/f1f836cb4ea6efb2a0b1b99f41ad8b103eff4b59/2026/04/07/ML-20200-image-3.png)
-
-## Voice interaction and dynamic ordering
-
-The following sequence diagram illustrates the flow of a customer's order query, demonstrating how natural language requests are processed to deliver synchronized responses:
-
-![Omnichannel voice interaction and dynamic ordering flow](https://d2908q01vomqb2.cloudfront.net/f1f836cb4ea6efb2a0b1b99f41ad8b103eff4b59/2026/04/07/ML-20200-image-4.png)
-
-The diagram shows a customer query ("I want to order") which is handled through asynchronous tool calling. The agent invokes multiple tools in parallel (`GetCustomerProfile`, `GetPreviousOrders`, `GetMenu`) through the AgentCore Gateway, which translates them into API Gateway REST calls. Lambda functions query DynamoDB and return the results back through the gateway. Nova 2 Sonic then generates a contextual response incorporating all the tool results, creating a personalized customer experience throughout the conversation.
-
-## Ordering walkthrough
-
-Open the frontend URL in your browser and sign in with the AppUser credentials. After you authenticate, choose the microphone button to start a voice conversation with the ordering agent. The agent greets you by name, gets your location from the browser, and pulls up your previous orders in the background. You can speak naturally. Ask to repeat a past order, browse the menu, find nearby pickup locations along your route, or build a new order from scratch. The agent responds with voice in real time, handles menu questions, adds items to your cart, and confirms your order with a total and estimated pickup time. The entire conversation happens hands-free over a single WebSocket connection. The agent calls backend tools asynchronously, so there are no pauses while data is being fetched.
-
-<!-- Demo video placeholder -->
-
-## Clean up
-
-If you decide to discontinue using the solution, you can follow these steps to remove it and its associated resources:
-
-**Delete the stacks:**
+Preview what will be deleted, then run the cleanup:
 
 ```bash
+# Preview deletions (no resources are removed)
+./cleanup-all.sh --dry-run
+
+# Delete all resources
 ./cleanup-all.sh
 ```
 
-**Delete the Amplify application:**
+The script destroys resources in reverse deployment order:
+1. Frontend (Amplify CDK stack)
+2. AgentCore Runtime (CDK stacks)
+3. AgentCore Gateway (CDK stack)
+4. Backend Infrastructure (DynamoDB, Lambda, API Gateway, Cognito, Location Services)
 
-For instructions, refer to [Clean Up Resources](https://aws.amazon.com/getting-started/hands-on/build-web-app-s3-lambda-api-gateway-dynamodb/module-six/).
+### Manual cleanup
 
-## Conclusion
+To remove components individually, destroy in reverse order:
 
-In this post, we showed you how to build an omnichannel ordering system using Amazon Cognito for authentication, Amazon Bedrock AgentCore for agent hosting, API Gateway for data communication, DynamoDB for storage, and Location Services for route optimization. The three-layer architecture separates frontend, agent, and backend components for independent development and scaling. The system supports menu management, cart functionality, loyalty programs, order processing, and location-based services through MCP integration. Amazon Nova 2 Sonic provides voice interactions with low latency, asynchronous tool calling, and interruption handling. Parallel tool calling reduces wait times, voice recognition works across accents, personalized recommendations use order history, and route-optimized pickup locations help customers find convenient stops. The pay-per-use pricing model and automated scaling control costs as usage grows, while with MCP integration, you can adapt the solution by adding new Lambda functions without modifying agent code. To get started, visit the solution repository on [GitHub](https://github.com/aws-samples/sample-omnichannel-ordering-with-amazon-bedrock-agentcore-and-nova-sonic) and customize the solution for your ordering platforms. For more information, see the Amazon Bedrock documentation and Introducing Amazon Nova 2 Sonic.
+1. Delete the frontend (if deployed):
+   ```bash
+   cd frontend/cdk
+   cdk destroy --force
+   cd ../..
+   ```
 
-## Additional resources
+2. Delete the AgentCore Runtime:
+   ```bash
+   cd backend/agentcore-runtime/cdk
+   cdk destroy --all --force
+   cd ../../..
+   ```
 
-To learn more about Amazon Bedrock AgentCore, Amazon Nova Sonic, and additional solutions, refer to the following resources:
+3. Delete the AgentCore Gateway:
+   ```bash
+   cd backend/agentcore-gateway/cdk
+   cdk destroy --force --context apiGatewayId="<API_GATEWAY_ID>"
+   cd ../../..
+   ```
 
-- [Introducing Amazon Nova 2 Sonic: Our new speech-to-speech model for conversational AI](https://aws.amazon.com/blogs/aws/introducing-amazon-nova-2-sonic-next-generation-speech-to-speech-model-for-conversational-ai/)
-- [Getting started with Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-get-started-toolkit.html)
-- [Model Context Protocol specification](https://modelcontextprotocol.io/)
-- [AWS Location Services documentation](https://docs.aws.amazon.com/location/)
-- [AgentCore CLI](https://github.com/aws/agentcore-cli) - While our solution uses CDK, you can also use AgentCore CLI which offers a command-line tool for creating, configuring, deploying, and managing agents on Amazon Bedrock AgentCore.
+4. Delete the backend infrastructure:
+   ```bash
+   cd backend/backend-infrastructure
+   cdk destroy --all --force
+   cd ../..
+   ```
 
-## About the authors
+### Verify cleanup
 
-**Sergio Barraza** - Sergio is a Senior Technical Account Manager at AWS, helping customers design and optimize cloud solutions. With more than 25 years in software development, he guides customers through AWS services adoption. Outside work, Sergio is a multi-instrument musician playing guitar, piano, and drums, and he also practices Wing Chun Kung Fu.
+Open the [AWS CloudFormation console](https://console.aws.amazon.com/cloudformation/) and confirm that all stacks (`QSR-DynamoDBStack`, `QSR-LocationStack`, `QSR-LambdaStack`, `QSR-ApiGatewayStack`, `QSR-CognitoStack`, `QSR-AgentCoreGatewayStack`, `AgentCoreInfraStack`, `AgentCoreRuntimeStack`, `QSR-FrontendStack`) have been deleted.
 
-**Salman Ahmed** - Salman is a Senior Technical Account Manager at AWS. He specializes in guiding customers through the design, implementation, and support of AWS solutions. Combining his networking expertise with a drive to explore new technologies, he helps organizations successfully navigate their cloud journey. Outside work, he enjoys photography, traveling, and watching his favorite sports teams.
+## Notices
 
-**Ravi Kumar** - Ravi is a Senior Technical Account Manager in AWS Enterprise Support who helps customers in the travel and hospitality industry to streamline their cloud operations on AWS. He is a results-driven IT professional with over 20 years of experience. Ravi is passionate about generative AI and actively explores its applications in cloud computing. Outside work, Ravi enjoys creative activities like painting. He also likes playing cricket and traveling to new places.
+*Customers are responsible for making their own independent assessment of the information in this Guidance. This Guidance: (a) is for informational purposes only, (b) represents AWS current product offerings and practices, which are subject to change without notice, and (c) does not create any commitments or assurances from AWS and its affiliates, suppliers or licensors. AWS products or services are provided "as is" without warranties, representations, or conditions of any kind, whether express or implied. AWS responsibilities and liabilities to its customers are controlled by AWS agreements, and this Guidance is not part of, nor does it modify, any agreement between AWS and its customers.*
+
+## FAQ, Known Issues, Additional Considerations, and Limitations
+
+### Known issues
+
+- **Browser compatibility.** Some browsers block microphone access over non-HTTPS connections. Use the Amplify-hosted frontend (HTTPS) or a local HTTPS proxy for the test client.
+- **Token expiration.** Amazon Cognito tokens expire after 1 hour. Re-authenticate if the session becomes unresponsive.
+- **Cold starts.** The first AWS Lambda invocation may take 2–3 seconds. Subsequent calls are faster.
+
+### Additional considerations
+
+- **Bedrock pricing.** Amazon Nova 2 Sonic charges per token (input and output). Output speech tokens are the dominant cost driver. Monitor usage with Amazon CloudWatch and AWS Cost Explorer.
+- **Data retention.** Configure DynamoDB TTL for automatic data cleanup on the Carts table (24-hour TTL is set by default).
+- **Compliance.** Ensure voice data handling complies with local regulations (GDPR, CCPA, and others) before deploying to production.
+- **Accessibility.** Test the frontend with screen readers and keyboard navigation for accessibility compliance.
+- **Rate limiting.** Implement rate limiting on Amazon API Gateway for production deployments.
+- **This Guidance creates IAM roles with scoped permissions.** Review the IAM policies in each CDK stack to ensure they meet your organization's security requirements.
+
+### Limitations
+
+- **Voice quality.** Requires a stable internet connection for real-time bidirectional streaming.
+- **Language support.** The sample agent is configured for English. Amazon Nova 2 Sonic supports additional languages that can be enabled by modifying the system prompt.
+- **Location accuracy.** Route-based recommendations depend on GPS signal quality and address data coverage in AWS Location Services.
+
+For any feedback, questions, or suggestions, use the [Issues tab](https://github.com/aws-solutions-library-samples/guidance-for-ai-powered-omnichannel-qsr-voice-ordering-on-aws/issues) in the repository.
+
+## Revisions
+
+- **v1.0.0** — Initial release with AgentCore Runtime, Amazon Nova 2 Sonic, and MCP integration.
+
+## Authors
+
+- Sergio Barraza, Senior TAM
+- Salman Ahmed, Senior TAM
+- Ravi Kumar, Senior TAM
