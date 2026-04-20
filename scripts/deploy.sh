@@ -2,7 +2,7 @@
 set -e
 
 # ============================================
-# Guidance for Restaurant In-App Voice AI using Amazon Bedrock AgentCore
+# Guidance for Voice AI In-App Ordering using Amazon Bedrock AgentCore
 # User-Facing Deploy Script
 # ============================================
 
