@@ -43,14 +43,15 @@ The architecture implements a four-section decoupled pattern:
 
 ### User request flow
 
-1. The user opens the web application hosted on **AWS Amplify** and authenticates with **Amazon Cognito** using username and password to receive JSON Web Token (JWT) tokens.
-2. The frontend exchanges the ID Token with the **Amazon Cognito** Identity Pool for temporary AWS credentials.
-3. The frontend opens a SigV4-signed WebSocket connection to **Amazon Bedrock AgentCore Runtime** and sends the Access Token for identity verification.
-4. The runtime validates the token via the **Amazon Cognito** GetUser API and extracts the customer's name, email, and customer ID.
-5. The runtime initializes **Amazon Nova 2 Sonic** on **Amazon Bedrock** with a personalized system prompt.
-6. The runtime connects to **Amazon Bedrock AgentCore Gateway** as an MCP client using SigV4 authentication and discovers available tools.
-7. The user speaks their order. The agent processes voice through Amazon Nova 2 Sonic and invokes tools asynchronously through the AgentCore Gateway using MCP. The gateway forwards requests as REST API calls to **Amazon API Gateway**, which routes them to **AWS Lambda** functions. Lambda functions query **Amazon DynamoDB** tables and **AWS Location Services**.
-8. Amazon Nova 2 Sonic generates a contextual voice response incorporating the tool results and streams it back to the user over the WebSocket connection.
+1. You access the web application hosted on **AWS Amplify** from a browser or mobile device. You authenticate with **Amazon Cognito** using username and password to receive JWT tokens and temporary AWS credentials.
+2. The frontend opens a SigV4-signed WebSocket connection to **Amazon Bedrock AgentCore**, an enterprise-grade service for deploying and operating AI agents at scale, to begin the voice ordering session.
+3. The runtime validates the token via **Amazon Cognito** and initializes **Amazon Nova 2 Sonic** through **Amazon Bedrock**, a fully managed service with built-in security, privacy, and responsible AI.
+4. You speak your order into the device microphone. The agent processes voice through **Amazon Nova 2 Sonic** and invokes tool functions via **AWS Lambda** to manage your cart and retrieve menu items.
+5. **Amazon Bedrock AgentCore Gateway** forwards requests as REST API calls to **Amazon API Gateway**, which routes them to **AWS Lambda** functions.
+6. **AWS Lambda** functions query **Amazon DynamoDB** tables and **Amazon Location Service** for menu data, cart management, and store proximity.
+7. **Amazon Nova 2 Sonic** generates a contextual voice response and streams it back to you over the WebSocket connection via **Amazon Bedrock AgentCore Runtime**.
+8. **AWS CDK** deploys the solution with a single script, uploading application code to **Amazon S3** and triggering **AWS CodeBuild** to build container images stored in **Amazon ECR** for the AgentCore runtime.
+9. **Amazon CloudWatch** provides centralized monitoring, logging, and alerting across all services. All data at rest is encrypted using **AWS KMS**.
 
 ### Cost
 
