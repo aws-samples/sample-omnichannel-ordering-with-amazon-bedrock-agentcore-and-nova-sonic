@@ -17,6 +17,7 @@ NC='\033[0m'
 # Source state manager
 source ./deployment-state.sh
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUTS_DIR="cdk-outputs"
 USER_EMAIL=""
 USER_NAME=""
@@ -100,15 +101,44 @@ print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
 # Run npm install with proper error handling.
 # Suppresses noise on success, shows full output on failure.
+# Frees disk space first by cleaning node_modules from other CDK projects.
 safe_npm_install() {
+  # Free disk space by removing node_modules from other CDK projects that already deployed.
+  # CloudShell has only ~1GB home directory — multiple CDK projects can't coexist.
+  local current_dir=$(pwd)
+  local project_dirs=(
+    "backend/backend-infrastructure"
+    "backend/agentcore-gateway/cdk"
+    "backend/agentcore-runtime/cdk"
+    "frontend/cdk"
+    "frontend"
+    "backend/synthetic-data"
+  )
+  
+  for dir in "${project_dirs[@]}"; do
+    local abs_dir="$SCRIPT_DIR/$dir"
+    # Don't delete node_modules for the project we're about to install
+    if [ "$abs_dir" != "$current_dir" ] && [ -d "$abs_dir/node_modules" ]; then
+      rm -rf "$abs_dir/node_modules"
+    fi
+  done
+  
   local output
   output=$(npm install --no-fund --no-audit 2>&1)
   local exit_code=$?
   
   if [ $exit_code -ne 0 ]; then
     echo "$output"
-    print_error "npm install failed (exit code $exit_code)"
-    print_info "Try running 'npm install' manually in $(pwd) to debug"
+    echo ""
+    # Check if it's a disk space issue
+    if echo "$output" | grep -q "ENOSPC"; then
+      print_error "npm install failed — no disk space left"
+      print_info "CloudShell has a 1 GB home directory limit."
+      print_info "Try: rm -rf ~/*/node_modules ~/.npm/_cacache && npm cache clean --force"
+    else
+      print_error "npm install failed (exit code $exit_code)"
+    fi
+    print_info "Directory: $(pwd)"
     exit 1
   fi
   

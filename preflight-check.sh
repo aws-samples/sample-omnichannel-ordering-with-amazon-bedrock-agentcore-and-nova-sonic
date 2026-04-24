@@ -110,6 +110,33 @@ else
   MISSING_DEPS+=("nodejs")
 fi
 
+# Check disk space (home directory needs ~500MB free for node_modules)
+print_check "Disk space"
+HOME_AVAIL_KB=$(df -k "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$HOME_AVAIL_KB" ] && [ "$HOME_AVAIL_KB" -lt 500000 ] 2>/dev/null; then
+  HOME_AVAIL_MB=$((HOME_AVAIL_KB / 1024))
+  HOME_TOTAL_KB=$(df -k "$HOME" 2>/dev/null | awk 'NR==2 {print $2}')
+  HOME_TOTAL_MB=$((HOME_TOTAL_KB / 1024))
+  
+  if [ "$HOME_TOTAL_MB" -le 1024 ] 2>/dev/null; then
+    # Small disk (likely CloudShell with 1GB home)
+    print_warning "Low disk space: ${HOME_AVAIL_MB}MB free (need ~500MB)"
+    echo -e "   ${YELLOW}You appear to be on AWS CloudShell (1 GB home directory).${NC}"
+    echo -e "   ${YELLOW}The deploy script will manage disk space automatically by cleaning${NC}"
+    echo -e "   ${YELLOW}node_modules between deployments, but if you hit issues, run:${NC}"
+    echo -e "   ${CYAN}rm -rf ~/*/node_modules ~/.npm/_cacache && npm cache clean --force${NC}"
+  else
+    print_warning "Low disk space: ${HOME_AVAIL_MB}MB free (need ~500MB)"
+  fi
+else
+  if [ -n "$HOME_AVAIL_KB" ]; then
+    HOME_AVAIL_MB=$((HOME_AVAIL_KB / 1024))
+    print_pass "Disk space: ${HOME_AVAIL_MB}MB free"
+  else
+    print_pass "Disk space: OK"
+  fi
+fi
+
 # Check AWS CLI
 print_check "AWS CLI"
 AWS_CLI_MISSING=false
