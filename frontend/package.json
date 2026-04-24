@@ -12,7 +12,7 @@
     "deploy:amplify": "node scripts/deploy-to-amplify.cjs"
   },
   "dependencies": {
-    "@aws-amplify/ui-react": "^6.1.0",
+    "@aws-amplify/ui-react": "^6.15.3",
     "@aws-crypto/sha256-js": "^5.2.0",
     "@aws-sdk/client-cognito-identity": "^3.500.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.500.0",
