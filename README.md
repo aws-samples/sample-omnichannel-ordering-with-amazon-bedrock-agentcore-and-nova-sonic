@@ -94,19 +94,10 @@ These deployment instructions are optimized to best work on **Amazon Linux 2023*
 
 Install the following tools before deployment:
 
-- [Node.js](https://nodejs.org/) 20.x or later (required for AWS CDK deployment)
-- [Python](https://www.python.org/downloads/) 3.13 or later (required for agent runtime and deployment scripts)
+- [Node.js](https://nodejs.org/) 20.x or later (required for AWS CDK deployment, Lambda functions, and synthetic data scripts)
 - [AWS Command Line Interface (AWS CLI)](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) 2.x configured with credentials
 - [AWS CDK CLI 2.x](https://docs.aws.amazon.com/cdk/v2/guide/getting-started.html): `npm install -g aws-cdk` (required for infrastructure deployment)
 - CDK bootstrapped in your target account/region: `npx cdk bootstrap`
-- [Boto3](https://aws.amazon.com/sdk-for-python/) 1.38.0 or later (required for `bedrock-agentcore-control` service support). Install using:
-  ```bash
-  python3 -m pip install --upgrade boto3 botocore --break-system-packages
-  ```
-- Additional Python packages:
-  ```bash
-  python3 -m pip install email-validator pyyaml --break-system-packages
-  ```
 
 ### AWS account requirements
 
@@ -155,7 +146,7 @@ chmod +x deploy-all.sh
 - `--skip-synthetic-data` — Skip synthetic data seeding.
 
 **What the script does:**
-- Checks all prerequisites (Node.js, Python, AWS CLI, CDK, credentials).
+- Checks all prerequisites (Node.js, AWS CLI, CDK, credentials).
 - Bootstraps CDK if not already done.
 - Deploys backend infrastructure (DynamoDB, Lambda, API Gateway, Cognito, Location Services).
 - Deploys AgentCore Gateway (MCP server exposing backend APIs as tools).
@@ -225,8 +216,8 @@ Follow these steps to deploy each component individually. Deploy in the order li
 6. (Optional) Populate synthetic data. This seeds DynamoDB with sample locations, menu items, customers, and orders:
    ```bash
    cd backend/synthetic-data
-   pip3 install -r requirements.txt
-   python3 populate_data.py
+   npm install
+   node populate-data.js
    cd ../..
    ```
 

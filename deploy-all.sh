@@ -377,13 +377,13 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
       cd backend/synthetic-data
       
       print_info "Installing dependencies..."
-      pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
+      npm install > /dev/null 2>&1
       
       print_info "Clearing existing synthetic data..."
-      python3 cleanup_data.py --force
+      node cleanup-data.js --force
       
       print_info "Populating database with new synthetic data..."
-      python3 populate_data.py ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
+      node populate-data.js ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
       
       update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
       print_success "Synthetic data repopulated"
@@ -394,10 +394,10 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
     cd backend/synthetic-data
     
     print_info "Installing dependencies..."
-    pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
+    npm install > /dev/null 2>&1
     
     print_info "Populating database with synthetic data..."
-    python3 populate_data.py ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
+    node populate-data.js ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
     
     update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
     print_success "Synthetic data populated"

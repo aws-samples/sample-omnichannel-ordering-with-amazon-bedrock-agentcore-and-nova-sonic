@@ -110,23 +110,6 @@ else
   MISSING_DEPS+=("nodejs")
 fi
 
-# Check Python
-print_check "Python version"
-if command -v python3 &> /dev/null; then
-  PYTHON_VERSION=$(python3 --version | awk '{print $2}')
-  PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-  PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
-  if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 12 ]; then
-    print_pass "Python $PYTHON_VERSION (>= 3.12 required)"
-  else
-    print_fail "Python $PYTHON_VERSION" "Version 3.12 or higher required"
-    MISSING_DEPS+=("python")
-  fi
-else
-  print_fail "Python not found" "Install from https://python.org"
-  MISSING_DEPS+=("python")
-fi
-
 # Check AWS CLI
 print_check "AWS CLI"
 AWS_CLI_MISSING=false
@@ -277,9 +260,6 @@ for dep in "${MISSING_DEPS[@]}"; do
   case $dep in
     nodejs)
       echo "  • Node.js 20.x+: https://nodejs.org"
-      ;;
-    python)
-      echo "  • Python 3.12+: https://python.org"
       ;;
     awscli)
       echo "  • AWS CLI: pip3 install awscli"
