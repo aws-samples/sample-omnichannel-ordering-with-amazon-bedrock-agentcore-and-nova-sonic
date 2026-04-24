@@ -206,7 +206,7 @@ if [ "$BACKEND_DEPLOYED" = "false" ]; then
   fi
   
   print_info "Installing dependencies..."
-  npm install > /dev/null 2>&1
+  npm install --no-fund --no-audit 2>&1 | tail -1 || true
   
   print_info "Deploying backend infrastructure..."
   cdk deploy --all \
@@ -257,7 +257,7 @@ if [ "$GATEWAY_DEPLOYED" = "false" ]; then
   cd backend/agentcore-gateway/cdk
   
   print_info "Installing CDK dependencies..."
-  npm install > /dev/null 2>&1
+  npm install --no-fund --no-audit 2>&1 | tail -1 || true
   
   print_info "Deploying AgentCore Gateway via CDK..."
   cdk deploy \
@@ -322,7 +322,7 @@ if [ "$RUNTIME_DEPLOYED" = "false" ]; then
   cd backend/agentcore-runtime/cdk
   
   print_info "Installing dependencies..."
-  npm install > /dev/null 2>&1
+  npm install --no-fund --no-audit 2>&1 | tail -1 || true
   
   print_info "Deploying runtime stacks..."
   cdk deploy --all \
@@ -377,7 +377,7 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
       cd backend/synthetic-data
       
       print_info "Installing dependencies..."
-      npm install > /dev/null 2>&1
+      npm install --no-fund --no-audit 2>&1 | tail -1 || true
       
       print_info "Clearing existing synthetic data..."
       node cleanup-data.js --force
@@ -394,7 +394,7 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
     cd backend/synthetic-data
     
     print_info "Installing dependencies..."
-    npm install > /dev/null 2>&1
+    npm install --no-fund --no-audit 2>&1 | tail -1 || true
     
     print_info "Populating database with synthetic data..."
     node populate-data.js ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
@@ -441,7 +441,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     cd frontend/cdk
     
     print_info "Installing CDK dependencies..."
-    npm install > /dev/null 2>&1
+    npm install --no-fund --no-audit 2>&1 | tail -1 || true
     
     print_info "Creating Amplify App via CDK..."
     cdk deploy --require-approval never \
@@ -451,7 +451,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     
     # Step 2: Deploy frontend code to Amplify
     print_info "Installing frontend dependencies..."
-    npm install > /dev/null 2>&1
+    npm install --no-fund --no-audit 2>&1 | tail -1 || true
     
     print_info "Deploying frontend code to Amplify..."
     npm run deploy:amplify
