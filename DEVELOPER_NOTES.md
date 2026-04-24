@@ -140,7 +140,6 @@ The following estimates assume 1,000 voice orders per month with 5 restaurant lo
 
 **Development Tools**
 - Node.js 20.x or later
-- Python 3.12 or later
 - AWS CLI configured with credentials
 - AWS CDK CLI: `npm install -g aws-cdk`
 
@@ -184,12 +183,12 @@ The following estimates assume 1,000 voice orders per month with 5 restaurant lo
 **Key Features:**
 - **Idempotent** - Run multiple times safely, updates existing resources
 - **State tracking** - Automatically tracks what's deployed in `.deployment-state.json`
-- **Preflight checks** - Validates Node.js, Python, AWS CLI, credentials, Bedrock access
+- **Preflight checks** - Validates Node.js, AWS CLI, credentials, Bedrock access
 - **Smart updates** - Skips healthy components, only deploys what's needed
 - **Two modes**: `--mode update` (default, idempotent) or `--mode fresh` (clean redeploy)
 
 **Preflight checks validate:**
-- Node.js 20.x+, Python 3.12+, AWS CLI, CDK CLI
+- Node.js 20.x+, AWS CLI, CDK CLI
 - AWS credentials and Bedrock Nova 2 Sonic access
 
 ### Alternative: One-Command Deployment
@@ -275,7 +274,7 @@ python client-cognito-sigv4.py --username AppUser --password <your-password>
 ```bash
 # Generate realistic test data
 cd backend/synthetic-data
-python populate_data.py
+node populate-data.js
 ```
 
 **Expected Output**: Sample locations, menu items, and orders created in DynamoDB.

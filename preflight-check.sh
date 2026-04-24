@@ -110,21 +110,31 @@ else
   MISSING_DEPS+=("nodejs")
 fi
 
-# Check Python
-print_check "Python version"
-if command -v python3 &> /dev/null; then
-  PYTHON_VERSION=$(python3 --version | awk '{print $2}')
-  PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-  PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
-  if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 12 ]; then
-    print_pass "Python $PYTHON_VERSION (>= 3.12 required)"
+# Check disk space (home directory needs ~500MB free for node_modules)
+print_check "Disk space"
+HOME_AVAIL_KB=$(df -k "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$HOME_AVAIL_KB" ] && [ "$HOME_AVAIL_KB" -lt 500000 ] 2>/dev/null; then
+  HOME_AVAIL_MB=$((HOME_AVAIL_KB / 1024))
+  HOME_TOTAL_KB=$(df -k "$HOME" 2>/dev/null | awk 'NR==2 {print $2}')
+  HOME_TOTAL_MB=$((HOME_TOTAL_KB / 1024))
+  
+  if [ "$HOME_TOTAL_MB" -le 1024 ] 2>/dev/null; then
+    # Small disk (likely CloudShell with 1GB home)
+    print_warning "Low disk space: ${HOME_AVAIL_MB}MB free (need ~500MB)"
+    echo -e "   ${YELLOW}You appear to be on AWS CloudShell (1 GB home directory).${NC}"
+    echo -e "   ${YELLOW}The deploy script will manage disk space automatically by cleaning${NC}"
+    echo -e "   ${YELLOW}node_modules between deployments, but if you hit issues, run:${NC}"
+    echo -e "   ${CYAN}rm -rf ~/*/node_modules ~/.npm/_cacache && npm cache clean --force${NC}"
   else
-    print_fail "Python $PYTHON_VERSION" "Version 3.12 or higher required"
-    MISSING_DEPS+=("python")
+    print_warning "Low disk space: ${HOME_AVAIL_MB}MB free (need ~500MB)"
   fi
 else
-  print_fail "Python not found" "Install from https://python.org"
-  MISSING_DEPS+=("python")
+  if [ -n "$HOME_AVAIL_KB" ]; then
+    HOME_AVAIL_MB=$((HOME_AVAIL_KB / 1024))
+    print_pass "Disk space: ${HOME_AVAIL_MB}MB free"
+  else
+    print_pass "Disk space: OK"
+  fi
 fi
 
 # Check AWS CLI
@@ -169,11 +179,72 @@ if [ "$CDK_MISSING" = false ] && [ "$AWS_CREDS_MISSING" = false ]; then
   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
   REGION=$(aws configure get region 2>/dev/null || echo "us-east-1")
   
-  if aws cloudformation describe-stacks --stack-name CDKToolkit --region "$REGION" &> /dev/null; then
-    print_pass "CDK bootstrapped in $REGION"
+  # The SSM parameter is the real source of truth — CDK deploy checks this, not the CloudFormation stack.
+  # Minimum required version is 6 (stable since CDK v2).
+  MIN_BOOTSTRAP_VERSION=6
+  BOOTSTRAP_VERSION=$(aws ssm get-parameter \
+    --name /cdk-bootstrap/hnb659fds/version \
+    --region "$REGION" \
+    --query 'Parameter.Value' \
+    --output text 2>/dev/null || echo "")
+  
+  if [ -n "$BOOTSTRAP_VERSION" ] && [ "$BOOTSTRAP_VERSION" -ge "$MIN_BOOTSTRAP_VERSION" ] 2>/dev/null; then
+    print_pass "CDK bootstrapped in $REGION (version $BOOTSTRAP_VERSION)"
   else
-    print_fail "CDK not bootstrapped" "Run: cdk bootstrap aws://$ACCOUNT_ID/$REGION"
-    MISSING_DEPS+=("cdk-bootstrap")
+    # Determine what went wrong for a clear message
+    STACK_EXISTS=$(aws cloudformation describe-stacks --stack-name CDKToolkit --region "$REGION" --query 'Stacks[0].StackName' --output text 2>/dev/null || echo "")
+    
+    if [ -n "$STACK_EXISTS" ] && [ -z "$BOOTSTRAP_VERSION" ]; then
+      # Stack exists but SSM parameter is missing — old bootstrap
+      echo ""
+      print_fail "CDK Bootstrap is outdated"
+      echo ""
+      echo -e "   ${YELLOW}What happened:${NC} Your account was bootstrapped with an older version of CDK"
+      echo -e "   that doesn't include the version tracking CDK needs to deploy."
+      echo ""
+      echo -e "   ${YELLOW}How to fix:${NC} Re-run the bootstrap command to update it."
+      echo -e "   This is safe — it updates the existing setup without affecting your resources."
+      echo ""
+    elif [ -n "$BOOTSTRAP_VERSION" ] && [ "$BOOTSTRAP_VERSION" -lt "$MIN_BOOTSTRAP_VERSION" ] 2>/dev/null; then
+      # SSM parameter exists but version is too old
+      echo ""
+      print_fail "CDK Bootstrap version too old (v${BOOTSTRAP_VERSION}, need v${MIN_BOOTSTRAP_VERSION}+)"
+      echo ""
+      echo -e "   ${YELLOW}What happened:${NC} Your bootstrap version ($BOOTSTRAP_VERSION) is older than what CDK requires ($MIN_BOOTSTRAP_VERSION)."
+      echo ""
+      echo -e "   ${YELLOW}How to fix:${NC} Re-run the bootstrap command to update it."
+      echo -e "   This is safe — it updates the existing setup without affecting your resources."
+      echo ""
+    else
+      # No stack at all
+      echo ""
+      print_fail "CDK not bootstrapped in $REGION"
+      echo ""
+      echo -e "   ${YELLOW}What is this?${NC} CDK bootstrap creates a small set of resources in your account"
+      echo -e "   (an S3 bucket and IAM roles) that CDK needs to deploy CloudFormation stacks."
+      echo -e "   This is a one-time setup per account/region."
+      echo ""
+    fi
+    
+    # Offer to auto-fix
+    echo -ne "   ${CYAN}Would you like to fix this now? (y/n): ${NC}"
+    read -r FIX_BOOTSTRAP
+    
+    if [[ "$FIX_BOOTSTRAP" =~ ^[Yy]$ ]]; then
+      echo ""
+      print_info "Running: npx cdk bootstrap aws://$ACCOUNT_ID/$REGION"
+      echo ""
+      if npx cdk bootstrap "aws://$ACCOUNT_ID/$REGION"; then
+        # Auto-fix succeeded — correct the counters since print_fail already incremented CHECKS_FAILED
+        ((CHECKS_FAILED--))
+        print_pass "CDK bootstrapped successfully in $REGION"
+      else
+        print_fail "Bootstrap failed" "Try running manually: npx cdk bootstrap aws://$ACCOUNT_ID/$REGION"
+        MISSING_DEPS+=("cdk-bootstrap")
+      fi
+    else
+      MISSING_DEPS+=("cdk-bootstrap")
+    fi
   fi
 fi
 
@@ -278,9 +349,6 @@ for dep in "${MISSING_DEPS[@]}"; do
     nodejs)
       echo "  • Node.js 20.x+: https://nodejs.org"
       ;;
-    python)
-      echo "  • Python 3.12+: https://python.org"
-      ;;
     awscli)
       echo "  • AWS CLI: pip3 install awscli"
       echo "    Or: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
@@ -289,7 +357,8 @@ for dep in "${MISSING_DEPS[@]}"; do
       echo "  • AWS CDK: npm install -g aws-cdk"
       ;;
     cdk-bootstrap)
-      echo "  • CDK Bootstrap: cdk bootstrap aws://ACCOUNT/REGION"
+      echo "  • CDK Bootstrap: npx cdk bootstrap aws://ACCOUNT/REGION"
+      echo "    (or re-run this script and answer 'y' when prompted)"
       ;;
   esac
 done

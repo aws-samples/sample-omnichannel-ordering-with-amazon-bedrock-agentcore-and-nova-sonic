@@ -17,6 +17,7 @@ NC='\033[0m'
 # Source state manager
 source ./deployment-state.sh
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUTS_DIR="cdk-outputs"
 USER_EMAIL=""
 USER_NAME=""
@@ -97,6 +98,53 @@ print_success() { echo -e "${GREEN}✅ $1${NC}"; }
 print_error() { echo -e "${RED}❌ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+
+# Run npm install with proper error handling.
+# Suppresses noise on success, shows full output on failure.
+# Frees disk space first by cleaning node_modules from other CDK projects.
+safe_npm_install() {
+  # Free disk space by removing node_modules from other CDK projects that already deployed.
+  # CloudShell has only ~1GB home directory — multiple CDK projects can't coexist.
+  local current_dir=$(pwd)
+  local project_dirs=(
+    "backend/backend-infrastructure"
+    "backend/agentcore-gateway/cdk"
+    "backend/agentcore-runtime/cdk"
+    "frontend/cdk"
+    "frontend"
+    "backend/synthetic-data"
+  )
+  
+  for dir in "${project_dirs[@]}"; do
+    local abs_dir="$SCRIPT_DIR/$dir"
+    # Don't delete node_modules for the project we're about to install
+    if [ "$abs_dir" != "$current_dir" ] && [ -d "$abs_dir/node_modules" ]; then
+      rm -rf "$abs_dir/node_modules"
+    fi
+  done
+  
+  local output
+  output=$(npm install --no-fund --no-audit 2>&1)
+  local exit_code=$?
+  
+  if [ $exit_code -ne 0 ]; then
+    echo "$output"
+    echo ""
+    # Check if it's a disk space issue
+    if echo "$output" | grep -q "ENOSPC"; then
+      print_error "npm install failed — no disk space left"
+      print_info "CloudShell has a 1 GB home directory limit."
+      print_info "Try: rm -rf ~/*/node_modules ~/.npm/_cacache && npm cache clean --force"
+    else
+      print_error "npm install failed (exit code $exit_code)"
+    fi
+    print_info "Directory: $(pwd)"
+    exit 1
+  fi
+  
+  # Show just the summary line on success
+  echo "$output" | tail -1
+}
 
 # Helper: extract JSON value from file - json_val <file> <stack> <key> [default]
 json_val() {
@@ -206,7 +254,7 @@ if [ "$BACKEND_DEPLOYED" = "false" ]; then
   fi
   
   print_info "Installing dependencies..."
-  npm install > /dev/null 2>&1
+  safe_npm_install
   
   print_info "Deploying backend infrastructure..."
   cdk deploy --all \
@@ -257,7 +305,7 @@ if [ "$GATEWAY_DEPLOYED" = "false" ]; then
   cd backend/agentcore-gateway/cdk
   
   print_info "Installing CDK dependencies..."
-  npm install > /dev/null 2>&1
+  safe_npm_install
   
   print_info "Deploying AgentCore Gateway via CDK..."
   cdk deploy \
@@ -322,7 +370,7 @@ if [ "$RUNTIME_DEPLOYED" = "false" ]; then
   cd backend/agentcore-runtime/cdk
   
   print_info "Installing dependencies..."
-  npm install > /dev/null 2>&1
+  safe_npm_install
   
   print_info "Deploying runtime stacks..."
   cdk deploy --all \
@@ -377,13 +425,13 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
       cd backend/synthetic-data
       
       print_info "Installing dependencies..."
-      pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
+      safe_npm_install
       
       print_info "Clearing existing synthetic data..."
-      python3 cleanup_data.py --force
+      node cleanup-data.js --force
       
       print_info "Populating database with new synthetic data..."
-      python3 populate_data.py ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
+      node populate-data.js ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
       
       update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
       print_success "Synthetic data repopulated"
@@ -394,10 +442,10 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
     cd backend/synthetic-data
     
     print_info "Installing dependencies..."
-    pip3 install -r requirements.txt --break-system-packages > /dev/null 2>&1
+    safe_npm_install
     
     print_info "Populating database with synthetic data..."
-    python3 populate_data.py ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
+    node populate-data.js ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
     
     update_state "synthetic-data" true '{"location_count": 5, "customer_count": 10, "menu_item_count": 100, "order_count": 30}'
     print_success "Synthetic data populated"
@@ -441,7 +489,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     cd frontend/cdk
     
     print_info "Installing CDK dependencies..."
-    npm install > /dev/null 2>&1
+    safe_npm_install
     
     print_info "Creating Amplify App via CDK..."
     cdk deploy --require-approval never \
@@ -451,7 +499,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     
     # Step 2: Deploy frontend code to Amplify
     print_info "Installing frontend dependencies..."
-    npm install > /dev/null 2>&1
+    safe_npm_install
     
     print_info "Deploying frontend code to Amplify..."
     npm run deploy:amplify
