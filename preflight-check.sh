@@ -208,6 +208,8 @@ if [ "$CDK_MISSING" = false ] && [ "$AWS_CREDS_MISSING" = false ]; then
       print_info "Running: npx cdk bootstrap aws://$ACCOUNT_ID/$REGION"
       echo ""
       if npx cdk bootstrap "aws://$ACCOUNT_ID/$REGION"; then
+        # Auto-fix succeeded — correct the counters since print_fail already incremented CHECKS_FAILED
+        ((CHECKS_FAILED--))
         print_pass "CDK bootstrapped successfully in $REGION"
       else
         print_fail "Bootstrap failed" "Try running manually: npx cdk bootstrap aws://$ACCOUNT_ID/$REGION"
