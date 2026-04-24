@@ -78,6 +78,33 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Install npm dependencies for a CDK project before cdk destroy.
+# Cleans other projects' node_modules first to free disk space (CloudShell has 1GB limit).
+ensure_deps() {
+  local project_dirs=(
+    "backend/backend-infrastructure"
+    "backend/agentcore-gateway/cdk"
+    "backend/agentcore-runtime/cdk"
+    "frontend/cdk"
+    "frontend"
+    "backend/synthetic-data"
+  )
+  local current_dir=$(pwd)
+  for dir in "${project_dirs[@]}"; do
+    local abs_dir="$SCRIPT_DIR/$dir"
+    if [ "$abs_dir" != "$current_dir" ] && [ -d "$abs_dir/node_modules" ]; then
+      rm -rf "$abs_dir/node_modules"
+    fi
+  done
+  
+  if [ ! -d "node_modules" ]; then
+    print_info "Installing dependencies..."
+    npm install --no-fund --no-audit > /dev/null 2>&1 || true
+  fi
+}
+
 # Helper: extract JSON value from file
 json_val() {
   local file=$1 stack=$2 key=$3 default=${4:-}
@@ -156,6 +183,7 @@ if [ "$SKIP_FRONTEND" = false ]; then
     print_info "Frontend stack found, destroying..."
     
     cd frontend/cdk
+    ensure_deps
     
     if [ "$FORCE" = true ]; then
       cdk destroy --force
@@ -216,6 +244,7 @@ if [ "$SKIP_RUNTIME" = false ]; then
   fi
   
   cd backend/agentcore-runtime/cdk
+  ensure_deps
   
   # RuntimeStack first (depends on InfraStack)
   RUNTIME_STACK_EXISTS=$(aws cloudformation describe-stacks \
@@ -319,6 +348,8 @@ if [ "$SKIP_GATEWAY" = false ]; then
     print_info "Gateway stack found, destroying..."
     print_info "This will delete Gateway, Targets, and IAM service role..."
     
+    ensure_deps
+    
     # Get API Gateway ID for CDK context
     API_GATEWAY_ID=""
     if [ -f "../../../$OUTPUTS_DIR/backend-infrastructure.json" ]; then
@@ -388,6 +419,7 @@ if [ "$SKIP_BACKEND_INFRA" = false ]; then
   
   if [ -n "$ANY_BACKEND_STACK" ]; then
     cd backend/backend-infrastructure
+    ensure_deps
     
     print_info "Destroying Backend Infrastructure stacks..."
     print_warning "This will delete DynamoDB tables (including synthetic data), Lambda functions, API Gateway, Cognito, etc."
