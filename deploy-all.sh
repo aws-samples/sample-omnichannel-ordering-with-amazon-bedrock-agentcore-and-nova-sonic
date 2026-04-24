@@ -98,6 +98,24 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
+# Run npm install with proper error handling.
+# Suppresses noise on success, shows full output on failure.
+safe_npm_install() {
+  local output
+  output=$(npm install --no-fund --no-audit 2>&1)
+  local exit_code=$?
+  
+  if [ $exit_code -ne 0 ]; then
+    echo "$output"
+    print_error "npm install failed (exit code $exit_code)"
+    print_info "Try running 'npm install' manually in $(pwd) to debug"
+    exit 1
+  fi
+  
+  # Show just the summary line on success
+  echo "$output" | tail -1
+}
+
 # Helper: extract JSON value from file - json_val <file> <stack> <key> [default]
 json_val() {
   local file=$1 stack=$2 key=$3 default=${4:-}
@@ -206,7 +224,7 @@ if [ "$BACKEND_DEPLOYED" = "false" ]; then
   fi
   
   print_info "Installing dependencies..."
-  npm install --no-fund --no-audit 2>&1 | tail -1 || true
+  safe_npm_install
   
   print_info "Deploying backend infrastructure..."
   cdk deploy --all \
@@ -257,7 +275,7 @@ if [ "$GATEWAY_DEPLOYED" = "false" ]; then
   cd backend/agentcore-gateway/cdk
   
   print_info "Installing CDK dependencies..."
-  npm install --no-fund --no-audit 2>&1 | tail -1 || true
+  safe_npm_install
   
   print_info "Deploying AgentCore Gateway via CDK..."
   cdk deploy \
@@ -322,7 +340,7 @@ if [ "$RUNTIME_DEPLOYED" = "false" ]; then
   cd backend/agentcore-runtime/cdk
   
   print_info "Installing dependencies..."
-  npm install --no-fund --no-audit 2>&1 | tail -1 || true
+  safe_npm_install
   
   print_info "Deploying runtime stacks..."
   cdk deploy --all \
@@ -377,7 +395,7 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
       cd backend/synthetic-data
       
       print_info "Installing dependencies..."
-      npm install --no-fund --no-audit 2>&1 | tail -1 || true
+      safe_npm_install
       
       print_info "Clearing existing synthetic data..."
       node cleanup-data.js --force
@@ -394,7 +412,7 @@ if [ "$SHOULD_DEPLOY_SYNTHETIC" = true ]; then
     cd backend/synthetic-data
     
     print_info "Installing dependencies..."
-    npm install --no-fund --no-audit 2>&1 | tail -1 || true
+    safe_npm_install
     
     print_info "Populating database with synthetic data..."
     node populate-data.js ${COMPANY_NAME:+--company-name "$COMPANY_NAME"}
@@ -441,7 +459,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     cd frontend/cdk
     
     print_info "Installing CDK dependencies..."
-    npm install --no-fund --no-audit 2>&1 | tail -1 || true
+    safe_npm_install
     
     print_info "Creating Amplify App via CDK..."
     cdk deploy --require-approval never \
@@ -451,7 +469,7 @@ if [ "$SHOULD_DEPLOY_FRONTEND" = true ]; then
     
     # Step 2: Deploy frontend code to Amplify
     print_info "Installing frontend dependencies..."
-    npm install --no-fund --no-audit 2>&1 | tail -1 || true
+    safe_npm_install
     
     print_info "Deploying frontend code to Amplify..."
     npm run deploy:amplify
